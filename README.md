@@ -63,7 +63,7 @@ carries the publish wall-clock time (`t0_ns = sec×10⁹ + nanosec`).
 
 ```bash
 # Build once
-docker build -t ros2-fleet-consumer consumer/
+docker build -t ros2-fleet-consumer -f consumer/Dockerfile .
 
 # Kafka
 docker run --rm --network host ros2-fleet-consumer --broker kafka

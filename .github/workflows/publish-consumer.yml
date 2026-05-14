@@ -44,7 +44,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: consumer
+          context: .
           file: consumer/Dockerfile
           build-args: ROS_DISTRO=humble
           push: true

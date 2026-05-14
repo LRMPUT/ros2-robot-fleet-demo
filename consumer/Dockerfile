@@ -10,8 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir confluent-kafka paho-mqtt
 
 WORKDIR /app
-COPY consume.py /app/
+COPY consumer/consume.py /app/consume.py
+COPY examples/echo_gnss.py /app/echo_gnss.py
 
 ENV PYTHONUNBUFFERED=1
 
-ENTRYPOINT ["bash", "-lc", "source /opt/ros/${ROS_DISTRO}/setup.bash && exec python3 /app/consume.py \"$@\"", "--"]
+# Source ROS then exec whatever command is passed (default: consume.py)
+ENTRYPOINT ["bash", "-lc", "source /opt/ros/${ROS_DISTRO}/setup.bash && exec \"$@\"", "--"]
+CMD ["python3", "/app/consume.py"]
