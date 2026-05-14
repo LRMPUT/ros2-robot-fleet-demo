@@ -14,7 +14,13 @@ OUT="${2:?usage: ./gen_fleet.sh <num_robots> <output_file>}"
 BROKER="${BROKER:-kafka}"
 RATE_HZ="${RATE_HZ:-10}"
 MSG_TYPE="${MSG_TYPE:-multi}"
-PAYLOAD_FORMAT="${PAYLOAD_FORMAT:-json}"
+# Default payload: JSON for Kafka (consumer-friendly), CDR for MQTT (smaller, avoids
+# introspection issues with nested message types like NavSatFix on some builds).
+if [[ "${BROKER}" == "mqtt" ]]; then
+    PAYLOAD_FORMAT="${PAYLOAD_FORMAT:-cdr}"
+else
+    PAYLOAD_FORMAT="${PAYLOAD_FORMAT:-json}"
+fi
 
 IMAGE="ghcr.io/lrmput/ros2-kafka-dispatcher:latest"
 
@@ -33,7 +39,6 @@ for ((i = 1; i <= N; i++)); do
       ROBOT_ID: "${i}"
       BAG_PATH: "/data/bag"
       RATE_HZ: "${RATE_HZ}"
-      ROS_DOMAIN_ID: "42"
       MSG_TYPE: "${MSG_TYPE}"
       SINK_KIND: "${BROKER}"
       BROKER_HOST: "localhost"

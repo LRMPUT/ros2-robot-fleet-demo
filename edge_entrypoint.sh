@@ -13,7 +13,13 @@ set -euo pipefail
 : "${MSG_TYPE:=multi}"
 : "${RATE_HZ:=10}"
 : "${MQTT_QOS:=1}"               # 0 = fire-and-forget, 1 = at-least-once
-: "${PAYLOAD_FORMAT:=json}"       # json (default) or cdr (binary)
+# JSON default for Kafka; CDR default for MQTT (mosquitto_sink JSON path has
+# introspection issues with nested message types such as NavSatFix).
+if [[ "${SINK_KIND}" == "mqtt" ]]; then
+    : "${PAYLOAD_FORMAT:=cdr}"
+else
+    : "${PAYLOAD_FORMAT:=json}"
+fi
 
 # Isolate each robot's DDS traffic in its own domain so the lifecycle
 # discovery doesn't compete across containers on the shared host network.
