@@ -1,0 +1,5 @@
+confluent-kafka>=2.3.0
+paho-mqtt>=1.6.0
+rclpy
+sensor_msgs
+nav_msgs

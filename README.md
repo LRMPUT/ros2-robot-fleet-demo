@@ -1,0 +1,121 @@
+# ROS 2 Robot Fleet Demo
+
+Simulate a fleet of N robots publishing sensor data to **Apache Kafka** or **MQTT**.
+Each robot replays a ROS 2 bag and has its own private sink (edge topology).
+
+## Prerequisites
+
+- Docker Engine ≥ 24 with Compose v2
+- A converted **ROS 2 bag** directory (must contain `metadata.yaml`)
+- Python 3.10+ with a ROS 2 Humble environment (for the demo consumer)
+
+### Convert a ROS 1 bag (one-time)
+
+```bash
+python3 -m venv /tmp/rosbags_venv
+/tmp/rosbags_venv/bin/pip install rosbags
+/tmp/rosbags_venv/bin/rosbags-convert \
+    --src my_recording.bag \
+    --dst /tmp/my_bag_ros2 \
+    --dst-version 8 --dst-typestore ros2_humble
+```
+
+## Quickstart
+
+```bash
+# 10 robots → Kafka
+N=10 BROKER=kafka BAG_PATH=/tmp/my_bag_ros2 ./run.sh
+
+# 5 robots → MQTT
+N=5 BROKER=mqtt BAG_PATH=/tmp/my_bag_ros2 ./run.sh
+
+# Stop the fleet
+./run.sh --stop
+```
+
+## Topic naming
+
+| Transport | Pattern | Example |
+|-----------|---------|---------|
+| Kafka | `ros2.robot_<id>.<suffix>` | `ros2.robot_3.gnss` |
+| MQTT  | `ros2/robot_<id>/<suffix>` | `ros2/robot_3/gnss` |
+
+| Suffix   | ROS 2 type                       | Rate    |
+|----------|----------------------------------|---------|
+| `gnss`   | `sensor_msgs/msg/NavSatFix`      | 10 Hz   |
+| `odom`   | `nav_msgs/msg/Odometry`          | 20 Hz   |
+| `scan`   | `sensor_msgs/msg/LaserScan`      | 50 Hz   |
+| `points` | `sensor_msgs/msg/PointCloud2`    | 12.5 Hz |
+
+Payloads are **CDR-serialized** ROS 2 messages. The `header.stamp` field
+carries the publish wall-clock time (`t0_ns = sec×10⁹ + nanosec`).
+
+## Demo consumer
+
+```bash
+cd consumer
+pip install -r requirements.txt    # confluent-kafka, paho-mqtt, rclpy, …
+
+# Live per-message view
+python consume.py --broker kafka
+
+# MQTT live view
+python consume.py --broker mqtt
+
+# Stats only (aggregate msg/s per second)
+python consume.py --broker kafka --stats-only
+
+# Filter specific robots
+python consume.py --broker kafka --robots 1,3,5
+```
+
+Output example:
+```
+Listening on KAFKA... (Ctrl+C to stop)
+
+[robot_  1]  gnss      1.2 ms    0.1 KB  ← ros2.robot_1.gnss
+[robot_  2]  scan      0.9 ms   28.0 KB  ← ros2.robot_2.scan
+[robot_  1]  odom      1.1 ms    0.3 KB  ← ros2.robot_1.odom
+...
+[stats]     925 msg/s   11340.2 KB/s  robots=10  total=55,500
+```
+
+## Options
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `N` | 10 | Number of robots |
+| `BROKER` | kafka | `kafka` or `mqtt` |
+| `BAG_PATH` | — | Path to ROS 2 bag directory |
+| `MSG_TYPE` | multi | `multi` \| `navsatfix` \| `odometry` \| `laserscan` \| `pointcloud2` |
+| `RATE_HZ` | 10 | Bag replay rate multiplier |
+| `KAFKA_PARTITIONS` | 4 | Kafka partitions per topic (Kafka only) |
+
+## Images
+
+Images are published to GHCR from the
+[ros2_kafka_dispatcher](https://github.com/LRMPUT/ros2_kafka_dispatcher) repo:
+
+| Image | Purpose |
+|-------|---------|
+| `ghcr.io/lrmput/ros2-kafka-dispatcher:latest` | Dispatcher (kafka_sink / mosquitto_sink) + robot publisher |
+
+### Build locally (alternative)
+
+```bash
+# From the ros2_kafka_dispatcher repo root:
+docker build -f docker/Dockerfile --build-arg ROS_DISTRO=humble \
+    -t ghcr.io/lrmput/ros2-kafka-dispatcher:latest .
+```
+
+## Decoding CDR in Python
+
+```python
+from rclpy.serialization import deserialize_message
+from sensor_msgs.msg import NavSatFix
+
+# raw_bytes comes from Kafka/MQTT payload
+msg = deserialize_message(raw_bytes, NavSatFix)
+print(f"lat={msg.latitude:.6f}  lon={msg.longitude:.6f}  alt={msg.altitude:.1f}")
+t0_ns = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
+```
