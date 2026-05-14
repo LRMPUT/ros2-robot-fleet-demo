@@ -179,34 +179,33 @@ so the fleet appears spatially distributed across the field.
 
 ## Trajectory recording and plotting
 
-### Extract directly from a bag (recommended)
+Record GNSS data flowing through the live Kafka or MQTT pipeline, then plot
+each robot's path on a satellite map.
 
-Reads NavSatFix from the bag's SQLite3 file — **no ROS installation required**.
-Applies the same per-robot offset as `robot_replay.py` and writes one file per robot.
+### 1. Start a fleet
 
 ```bash
-pip install pandas geopandas folium contextily matplotlib
-
-python3 tools/extract_gnss_from_bag.py \
-    --bag bags/rorbots_follower_leader_parcelle_1MONT_ros2 \
-    --robots 1-10 \
-    --out trajectories/
+N=10 BROKER=mqtt BAG_PATH=/path/to/bag ./run.sh
+# or
+N=10 BROKER=kafka BAG_PATH=/path/to/bag ./run.sh
 ```
 
-### Record from a live fleet
+### 2. Record GNSS from the pipeline
 
 ```bash
-# Kafka fleet
-python3 tools/record_gnss.py --broker kafka --robots 1-10 --out trajectories/ --duration 120
+pip install pandas geopandas folium contextily matplotlib paho-mqtt confluent-kafka
 
 # MQTT fleet
 python3 tools/record_gnss.py --broker mqtt --robots 1-10 --out trajectories/ --duration 120
+
+# Kafka fleet
+python3 tools/record_gnss.py --broker kafka --robots 1-10 --out trajectories/ --duration 120
 ```
 
-Both approaches write `robot_N_gnss.txt` files (`timestamp_ns / latitude / longitude / altitude`).
-Auto-detects JSON and CDR payloads.
+Writes one `robot_N_gnss.txt` file per robot (`timestamp_ns / latitude / longitude / altitude`).
+Auto-detects JSON and CDR payloads from the broker headers.
 
-### Plot trajectories
+### 3. Plot trajectories
 
 ```bash
 python3 tools/plot_trajectories.py trajectories/
@@ -216,6 +215,19 @@ Outputs:
 - `trajectories.html` — interactive Leaflet map (open in browser)
 - `trajectories.png` — 500 dpi satellite map (Esri WorldImagery)
 - `trajectories.pdf` — vector version for publications
+
+### Alternative: extract directly from a bag
+
+If no fleet is running, `extract_gnss_from_bag.py` reads NavSatFix directly
+from the `.db3` bag file (no ROS installation required) and applies the same
+per-robot offset as `robot_replay.py`:
+
+```bash
+python3 tools/extract_gnss_from_bag.py \
+    --bag bags/rorbots_follower_leader_parcelle_1MONT_ros2 \
+    --robots 1-10 \
+    --out trajectories/
+```
 
 ## Decoding CDR in Python
 
