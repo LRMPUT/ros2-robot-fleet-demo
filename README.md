@@ -111,11 +111,9 @@ docker build -f docker/Dockerfile --build-arg ROS_DISTRO=humble \
 ## Using the INRAE field campaign bag
 
 The demo was developed using a real ROS 1 bag from a leader/follower
-agricultural campaign at INRAE Clermont-Ferrand (CHIST-ERA project).
+agricultural campaign at INRAE Clermont-Ferrand.
 
 **Available at:** `rorbots_follower_leader_parcelle_1MONT.bag` (~345 MB)
-— see the [SIGSPATIAL 2026 paper](https://github.com/LRMPUT/ros2_dispatcher)
-for the Zenodo DOI.
 
 ```bash
 # 1. Convert (one-time, ~2 min)

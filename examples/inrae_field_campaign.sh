@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Example: simulate a multi-robot fleet using the INRAE Clermont-Ferrand
-# leader/follower field campaign bag (CHIST-ERA project).
+# leader/follower field campaign bag.
 #
 # The original ROS 1 bag contains one leader and one follower robot with:
 #   NavSatFix   @ 10 Hz   (/follower/gps/fix, /leader/gps/fix)
@@ -16,7 +16,7 @@
 # Prerequisites:
 #   1. Download the bag:
 #        rorbots_follower_leader_parcelle_1MONT.bag
-#      Available at: https://doi.org/10.5281/zenodo.XXXXXXX   [TODO: add DOI]
+#      Obtain the bag file separately and place it in the repo root.
 #
 #   2. Convert to ROS 2:
 #        ./convert_bag.sh rorbots_follower_leader_parcelle_1MONT.bag
@@ -39,7 +39,7 @@ if [[ ! -d "${BAG_ROS2}" ]]; then
     echo ""
     echo "Step 1 — download the ROS 1 bag:"
     echo "  rorbots_follower_leader_parcelle_1MONT.bag"
-    echo "  (see README.md for the Zenodo DOI)"
+    echo "  Obtain the bag file and place it in the repo root."
     echo ""
     echo "Step 2 — convert:"
     echo "  ./convert_bag.sh rorbots_follower_leader_parcelle_1MONT.bag"

@@ -12,7 +12,7 @@ set -euo pipefail
 : "${BROKER_HOST:=localhost}"
 : "${MSG_TYPE:=multi}"
 : "${RATE_HZ:=10}"
-: "${MQTT_QOS:=1}"               # 0 = fire-and-forget, 1 = at-least-once (paper default)
+: "${MQTT_QOS:=1}"               # 0 = fire-and-forget, 1 = at-least-once
 
 # ROS setup scripts reference unset variables; relax set -u for the source step.
 set +u
