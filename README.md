@@ -44,10 +44,21 @@ N=5 BROKER=mqtt BAG_PATH=/tmp/my_bag_ros2 ./run.sh
 
 ## Topic naming
 
-| Transport | Pattern | Example |
-|-----------|---------|---------|
-| Kafka | `ros2.robot_<id>.<suffix>` | `ros2.robot_3.gnss` |
-| MQTT  | `ros2/robot_<id>/<suffix>` | `ros2/robot_3/gnss` |
+Each robot is isolated — its own ROS domain, its own sink instance.
+By default (Kafka, `FLEET_ROUTING=1`) all robots write to **one shared topic**
+keyed by `robot_id`, enabling a single ksqlDB query for the whole fleet:
+
+```
+robot_1 (domain 1) → own sink → ros2.fleet.gnss  key=robot_1 ─┐
+robot_2 (domain 2) → own sink → ros2.fleet.gnss  key=robot_2 ─┤ → ksqlDB
+robot_N (domain N) → own sink → ros2.fleet.gnss  key=robot_N ─┘
+```
+
+| Transport | Routing | Topic pattern | Example |
+|-----------|---------|---------------|---------|
+| Kafka (default) | fleet | `ros2.fleet.<suffix>` | `ros2.fleet.gnss` |
+| Kafka | per-robot (`FLEET_ROUTING=0`) | `ros2.robot_<id>.<suffix>` | `ros2.robot_3.gnss` |
+| MQTT  | per-robot | `ros2/robot_<id>/<suffix>` | `ros2/robot_3/gnss` |
 
 | Suffix   | ROS 2 type                       | Rate    |
 |----------|----------------------------------|---------|
@@ -56,8 +67,10 @@ N=5 BROKER=mqtt BAG_PATH=/tmp/my_bag_ros2 ./run.sh
 | `scan`   | `sensor_msgs/msg/LaserScan`      | 50 Hz   |
 | `points` | `sensor_msgs/msg/PointCloud2`    | 12.5 Hz |
 
-Payloads are **CDR-serialized** ROS 2 messages. The `header.stamp` field
-carries the publish wall-clock time (`t0_ns = sec×10⁹ + nanosec`).
+Kafka payloads are **JSON-serialized** ROS 2 messages (field names match
+the ROS message definition). The `header.stamp` field carries the
+publish wall-clock time (`t0_ns = sec×10⁹ + nanosec`).
+MQTT payloads are CDR-serialized by default.
 
 ## Demo consumer
 
@@ -182,6 +195,79 @@ Outputs:
 - `trajectories.html` — interactive Leaflet map (open in browser)
 - `trajectories.png` — 500 dpi satellite map (Esri WorldImagery)
 - `trajectories.pdf` — vector version for publications
+
+## ksqlDB analytics
+
+The optional `docker-compose.ksqldb.yml` overlay adds a real-time analytics layer on
+top of the Kafka fleet stack: **ksqlDB**, **Schema Registry**, **Kafka UI**, and the
+**GIS4IoRT API** (geofencing + collision detection).
+
+### Architecture
+
+```
+robot_1 (domain 1) → kafka_sink → ros2.fleet.gnss  key=robot_1 ─┐
+robot_2 (domain 2) → kafka_sink → ros2.fleet.gnss  key=robot_2 ─┤ → ksqlDB → GIS API
+robot_N (domain N) → kafka_sink → ros2.fleet.gnss  key=robot_N ─┘
+```
+
+All robot sinks write JSON to the **same** Kafka topic; ksqlDB consumes it as a single
+stream and exposes it to the GIS4IoRT API.  No extra bridge or CDR→JSON converter is
+needed — the fleet stack already defaults to `PAYLOAD_FORMAT=json` for Kafka.
+
+### 1. Start the analytics stack
+
+```bash
+# Start ksqlDB + GIS API alongside the Kafka broker (do this first, before the fleet)
+BAG_PATH=/path/to/bag \
+  docker compose -f docker-compose.kafka.yml \
+                 -f docker-compose.ksqldb.yml \
+                 up -d
+```
+
+Wait ~30 s for ksqlDB to become healthy and for `ksqldb-init` to load the schema.
+
+### 2. Start the robot fleet
+
+```bash
+# Fleet routing is on by default for Kafka (FLEET_ROUTING=1)
+N=10 BROKER=kafka BAG_PATH=/path/to/bag ./run.sh
+```
+
+Each robot's sink will publish to `ros2.fleet.gnss` (and `odom`, `scan`, `points`)
+with `kafka_key=robot_<id>` so ksqlDB can identify the source robot.
+
+### 3. Query live GNSS data
+
+```bash
+# Open the ksqlDB CLI
+docker exec -it $(docker ps -qf name=ksqldb-server) ksql http://localhost:8088
+
+# Stream live positions from all robots
+ksql> SELECT robot_id, latitude, longitude, altitude FROM FLEET_GNSS EMIT CHANGES;
+
+# Latest fix per robot (table scan)
+ksql> SELECT robot_id, latitude, longitude FROM FLEET_GNSS EMIT CHANGES LIMIT 10;
+```
+
+### Services
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| ksqlDB REST | http://localhost:8088 | Query endpoint (ksql CLI / REST API) |
+| Kafka UI | http://localhost:8090 | Browse topics, messages, consumer groups |
+| GIS4IoRT API | http://localhost:8000/docs | Swagger UI — geofencing, WebSocket streams |
+| Schema Registry | http://localhost:8081 | Confluent Schema Registry |
+
+### Stop
+
+```bash
+# Stop ksqlDB overlay only
+docker compose -f docker-compose.kafka.yml -f docker-compose.ksqldb.yml down
+
+# Stop everything (fleet + analytics)
+./run.sh --stop
+docker compose -f docker-compose.kafka.yml -f docker-compose.ksqldb.yml down
+```
 
 ## Decoding CDR in Python
 
