@@ -105,7 +105,7 @@ trap cleanup EXIT
 
 # 2. Wait for the sink lifecycle service, then configure + activate.
 echo "[edge] waiting for /${NODE_NAME} lifecycle..."
-if ! timeout 30 bash -c "until ros2 lifecycle get /${NODE_NAME} >/dev/null 2>&1; do sleep 0.2; done"; then
+if ! timeout 60 bash -c "until ros2 lifecycle get /${NODE_NAME} >/dev/null 2>&1; do sleep 1; done"; then
     echo "[edge] ERROR: /${NODE_NAME} lifecycle never appeared" >&2
     exit 1
 fi

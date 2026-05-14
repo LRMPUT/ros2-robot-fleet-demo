@@ -84,7 +84,7 @@ robot_services=""
 for ((i=1; i<=N; i++)); do robot_services+="robot_${i} "; done
 
 NUM_ROBOTS="${N}" MSG_TYPE="${MSG_TYPE}" \
-    docker compose "${COMPOSE_ARGS[@]}" up -d --no-deps ${robot_services}
+    docker compose "${COMPOSE_ARGS[@]}" up -d --no-deps --remove-orphans ${robot_services}
 
 bringup_pad=$(( 8 + N / 2 ))
 echo "[fleet] waiting ${bringup_pad}s for lifecycle init..."
