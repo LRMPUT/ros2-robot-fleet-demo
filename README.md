@@ -123,7 +123,7 @@ docker build -f docker/Dockerfile --build-arg ROS_DISTRO=humble \
 The demo was developed using a real ROS 1 bag from a leader/follower
 agricultural campaign at INRAE Clermont-Ferrand.
 
-**Available at:** `rorbots_follower_leader_parcelle_1MONT.bag` (~345 MB)
+**Download:** [Google Drive (~345 MB)](https://drive.google.com/drive/folders/1ZtEteOZKS7RpE3ClVaJJBrmUmUiiYYma?usp=sharing)
 
 ```bash
 # 1. Convert (one-time, ~2 min)
@@ -140,8 +140,9 @@ docker run --rm --network host ros2-fleet-consumer --broker kafka --stats-only
 The bag contains NavSatFix, Odometry, LaserScan and PointCloud2 topics.
 `robot_replay.py` selects topics **by message type**, not by name, so it
 works with any bag that has those four ROS 2 types.
-Each simulated robot gets its GPS position shifted by ~11 m (Δlat/Δlon = 1e-4 × robot\_id)
-so the fleet appears spatially distributed across the field.
+Each simulated robot gets its GPS position shifted **~6 m perpendicular to the field's
+travel direction** (computed via PCA on the bag trajectory), so the 10 robots form
+non-crossing parallel tracks centred around the original route.
 
 ## Trajectory recording and plotting
 

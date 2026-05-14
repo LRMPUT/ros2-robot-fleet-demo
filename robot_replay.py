@@ -21,8 +21,13 @@ from rosidl_runtime_py.utilities import get_message
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan, NavSatFix, PointCloud2
 
-LAT_OFFSET_DEG_PER_ID = 0.0001  # ~11 m at the equator; close enough
-LON_OFFSET_DEG_PER_ID = 0.0001
+# Per-robot GPS offset — perpendicular to the field's main travel direction
+# (PCA on the INRAE parcelle bag: main axis ~NNW, perp axis ~ENE).
+# Robots 1..10 are centred around the base track: offset = (id - 5.5) * step.
+# Step size ≈ 6 m, giving ~54 m total spread with no trajectory crossings.
+LAT_OFFSET_DEG_PER_ID = 0.00001777   # northing component (~1.98 m/step)
+LON_OFFSET_DEG_PER_ID = 0.00007371   # easting  component (~5.72 m/step)
+FLEET_CENTER_ID = 5.5                 # centre of robots 1..10
 
 
 # Maps the short MSG_TYPE env value (set by orchestrator) to:
@@ -42,8 +47,8 @@ MULTI_TYPES = ("navsatfix", "odometry", "laserscan", "pointcloud2")
 
 def shift_navsatfix(msg: NavSatFix, robot_id: int) -> None:
     """Apply a deterministic per-robot offset to lat/lon. In-place."""
-    msg.latitude += LAT_OFFSET_DEG_PER_ID * robot_id
-    msg.longitude += LON_OFFSET_DEG_PER_ID * robot_id
+    msg.latitude  += (robot_id - FLEET_CENTER_ID) * LAT_OFFSET_DEG_PER_ID
+    msg.longitude += (robot_id - FLEET_CENTER_ID) * LON_OFFSET_DEG_PER_ID
 
 
 def shift_message(msg, robot_id: int, msg_type: str) -> None:

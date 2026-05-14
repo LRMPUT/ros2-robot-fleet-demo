@@ -23,9 +23,10 @@ import sqlite3
 import struct
 import sys
 
-# Must match robot_replay.py
-LAT_OFFSET_DEG_PER_ID = 0.0001
-LON_OFFSET_DEG_PER_ID = 0.0001
+# Must match robot_replay.py — perpendicular to field path, fleet centred at id=5.5
+LAT_OFFSET_DEG_PER_ID = 0.00001777
+LON_OFFSET_DEG_PER_ID = 0.00007371
+FLEET_CENTER_ID = 5.5
 
 
 # ── CDR NavSatFix decoder ────────────────────────────────────────────────────
@@ -123,8 +124,8 @@ def apply_robot_offset(
     pts: list[tuple[int, float, float, float]],
     robot_id: int,
 ) -> list[tuple[int, float, float, float]]:
-    dlat = LAT_OFFSET_DEG_PER_ID * robot_id
-    dlon = LON_OFFSET_DEG_PER_ID * robot_id
+    dlat = (robot_id - FLEET_CENTER_ID) * LAT_OFFSET_DEG_PER_ID
+    dlon = (robot_id - FLEET_CENTER_ID) * LON_OFFSET_DEG_PER_ID
     return [(ts, lat + dlat, lon + dlon, alt) for ts, lat, lon, alt in pts]
 
 
