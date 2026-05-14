@@ -76,7 +76,7 @@ def _print_line(robot_id: int, topic: str, suffix: str, lat_ms: float, n_bytes: 
           flush=True)
 
 
-def _stats_loop(interval: float = 1.0) -> None:
+def _stats_loop(interval: float = 1.0, stats_only: bool = False) -> None:
     t_prev = time.monotonic()
     while not _stop.is_set():
         time.sleep(interval)
@@ -95,11 +95,18 @@ def _stats_loop(interval: float = 1.0) -> None:
         robots_seen = {_parse_kafka_topic(t) or _parse_mqtt_topic(t)
                        for t in snap_counts} - {None}
         robot_ids = sorted({r for r, _ in robots_seen if r is not None})
-        print(
-            f"\r[stats]  {total_rate:6.0f} msg/s  {total_kb:7.1f} KB/s"
-            f"  robots={len(robot_ids)}  total={total_m:,}",
-            end="", flush=True,
-        )
+        if stats_only:
+            print(
+                f"\r[stats]  {total_rate:6.0f} msg/s  {total_kb:7.1f} KB/s"
+                f"  robots={len(robot_ids)}  total={total_m:,}",
+                end="", flush=True,
+            )
+        else:
+            print(
+                f"[stats]  {total_rate:6.0f} msg/s  {total_kb:7.1f} KB/s"
+                f"  robots={len(robot_ids)}  total={total_m:,}",
+                flush=True,
+            )
 
 
 def consume_kafka(bootstrap: str, robot_filter: Optional[set[int]],
@@ -117,7 +124,10 @@ def consume_kafka(bootstrap: str, robot_filter: Optional[set[int]],
 
     while not _stop.is_set():
         msg = consumer.poll(timeout=0.3)
-        if msg is None or msg.error():
+        if msg is None:
+            continue
+        if msg.error():
+            print(f"[kafka error] {msg.error()}", file=sys.stderr, flush=True)
             continue
         parsed = _parse_kafka_topic(msg.topic())
         if parsed is None:
@@ -184,7 +194,8 @@ def main() -> None:
     if args.robots:
         robot_filter = {int(r.strip()) for r in args.robots.split(",")}
 
-    stats_thread = threading.Thread(target=_stats_loop, daemon=True)
+    stats_thread = threading.Thread(target=_stats_loop,
+                                    kwargs={"stats_only": args.stats_only}, daemon=True)
     stats_thread.start()
 
     print(f"Listening on {args.broker.upper()}... (Ctrl+C to stop)\n", flush=True)

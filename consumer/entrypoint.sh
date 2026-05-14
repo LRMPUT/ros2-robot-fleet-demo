@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 source /opt/ros/${ROS_DISTRO}/setup.bash
 
 # If first arg is a python3 call or a .py file, exec directly.

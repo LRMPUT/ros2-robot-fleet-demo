@@ -17,19 +17,19 @@ Usage:
 
   # Docker (no local ROS needed for JSON)
   docker run --rm --network host ros2-fleet-consumer \
-      python /app/echo_gnss.py --broker kafka --robots 1,2
+      python3 /app/echo_gnss.py --broker kafka --robots 1,2
 """
 from __future__ import annotations
 
 import argparse
 import json
 import signal
-import sys
+import threading
 import time
 
-_stop = False
-signal.signal(signal.SIGINT,  lambda *_: globals().update(_stop=True))
-signal.signal(signal.SIGTERM, lambda *_: globals().update(_stop=True))
+_stop = threading.Event()
+signal.signal(signal.SIGINT,  lambda *_: _stop.set())
+signal.signal(signal.SIGTERM, lambda *_: _stop.set())
 
 
 def _decode_json(payload: bytes) -> tuple[float, float] | None:
@@ -66,7 +66,7 @@ def echo_kafka(bootstrap: str, robot_ids: list[int], decode) -> None:
     })
     consumer.subscribe(topics)
     print(f"Subscribed to: {', '.join(topics)}\n")
-    while not _stop:
+    while not _stop.is_set():
         msg = consumer.poll(timeout=0.3)
         if msg is None or msg.error():
             continue
@@ -94,8 +94,7 @@ def echo_mqtt(host: str, port: int, robot_ids: list[int], decode) -> None:
         client.subscribe(t)
     print(f"Subscribed to: {', '.join(topics)}\n")
     client.loop_start()
-    while not _stop:
-        time.sleep(0.2)
+    _stop.wait()
     client.loop_stop()
     client.disconnect()
 
