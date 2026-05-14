@@ -11,10 +11,11 @@ RUN pip install --no-cache-dir confluent-kafka paho-mqtt
 
 WORKDIR /app
 COPY consumer/consume.py /app/consume.py
+COPY consumer/entrypoint.sh /app/entrypoint.sh
 COPY examples/echo_gnss.py /app/echo_gnss.py
+
+RUN chmod +x /app/entrypoint.sh
 
 ENV PYTHONUNBUFFERED=1
 
-# Source ROS then exec whatever command is passed (default: consume.py)
-ENTRYPOINT ["bash", "-lc", "source /opt/ros/${ROS_DISTRO}/setup.bash && exec \"$@\"", "--"]
-CMD ["python3", "/app/consume.py"]
+ENTRYPOINT ["/app/entrypoint.sh"]
