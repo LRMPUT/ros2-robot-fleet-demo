@@ -1,6 +1,9 @@
 #!/bin/bash
-set -euo pipefail
+set -eo pipefail
+# ROS setup.bash references unbound vars internally — disable -u around it
+set +u
 source /opt/ros/${ROS_DISTRO}/setup.bash
+set -u
 
 # If first arg is a python3 call or a .py file, exec directly.
 # Otherwise pass all args to consume.py (default behaviour).
