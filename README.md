@@ -131,7 +131,7 @@ agricultural campaign at INRAE Clermont-Ferrand.
 ./examples/inrae_field_campaign.sh kafka 10
 
 # 3. Live consumer (second terminal)
-cd consumer && python consume.py --broker kafka --stats-only
+docker run --rm --network host ros2-fleet-consumer --broker kafka --stats-only
 ```
 
 The bag contains NavSatFix, Odometry, LaserScan and PointCloud2 topics.

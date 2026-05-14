@@ -61,4 +61,6 @@ N="${N}" BROKER="${BROKER}" BAG_PATH="${BAG_ROS2}" MSG_TYPE=multi ./run.sh
 
 echo ""
 echo "Live consumer (open a second terminal):"
-echo "  cd consumer && python consume.py --broker ${BROKER} --stats-only"
+echo "  docker run --rm --network host ros2-fleet-consumer --broker ${BROKER} --stats-only"
+echo ""
+echo "  (build once: docker build -t ros2-fleet-consumer consumer/)"
