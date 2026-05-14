@@ -40,6 +40,7 @@ for ((i = 1; i <= N; i++)); do
     volumes:
       - "\${BAG_PATH:?BAG_PATH is required}:/data/bag:ro"
       - ./edge_entrypoint.sh:/usr/local/bin/edge_entrypoint.sh:ro
+      - ./robot_replay.py:/app/robot_replay.py:ro
     entrypoint: ["/usr/local/bin/edge_entrypoint.sh"]
     depends_on:
       - broker
