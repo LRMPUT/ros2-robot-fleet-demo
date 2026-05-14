@@ -13,7 +13,7 @@ set -euo pipefail
 : "${MSG_TYPE:=multi}"
 : "${RATE_HZ:=10}"
 : "${MQTT_QOS:=1}"               # 0 = fire-and-forget, 1 = at-least-once
-: "${PAYLOAD_FORMAT:=cdr}"       # cdr (binary, default) or json
+: "${PAYLOAD_FORMAT:=json}"       # json (default) or cdr (binary)
 
 # ROS setup scripts reference unset variables; relax set -u for the source step.
 set +u
