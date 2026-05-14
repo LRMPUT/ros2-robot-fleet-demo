@@ -29,24 +29,26 @@ echo "  Source : ${SRC}"
 echo "  Output : ${DST}"
 echo "============================================="
 
-mkdir -p "${DST}"
+DST_PARENT="$(dirname "${DST}")"
+DST_NAME="$(basename "${DST}")"
+mkdir -p "${DST_PARENT}"
 
 docker run --rm \
     -v "${SRC}:/input/bag.bag:ro" \
-    -v "${DST}:/output" \
+    -v "${DST_PARENT}:/output_parent" \
     python:3.11-slim \
     bash -c "
         pip install --quiet rosbags && \
         rosbags-convert \
             --src /input/bag.bag \
-            --dst /output \
+            --dst /output_parent/${DST_NAME} \
             --dst-version 8 \
             --dst-typestore ros2_humble && \
         echo '' && \
         echo 'Topics found:' && \
         python3 -c \"
 import rosbags.rosbag2 as rb2
-with rb2.Reader('/output') as r:
+with rb2.Reader('/output_parent/${DST_NAME}') as r:
     for conn in r.connections:
         print(f'  {conn.topic:<50} {conn.msgtype}')
 \"
