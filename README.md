@@ -52,21 +52,33 @@ carries the publish wall-clock time (`t0_ns = sec×10⁹ + nanosec`).
 
 ## Demo consumer
 
+**Option A — Docker (no local ROS 2 needed):**
+
+```bash
+# Build once
+docker build -t ros2-fleet-consumer consumer/
+
+# Kafka
+docker run --rm --network host ros2-fleet-consumer --broker kafka
+
+# MQTT
+docker run --rm --network host ros2-fleet-consumer --broker mqtt
+
+# Stats only
+docker run --rm --network host ros2-fleet-consumer --broker kafka --stats-only
+
+# Specific robots
+docker run --rm --network host ros2-fleet-consumer --broker kafka --robots 1,3,5
+```
+
+**Option B — local Python (requires ROS 2 Humble):**
+
 ```bash
 cd consumer
-pip install -r requirements.txt    # confluent-kafka, paho-mqtt, rclpy, …
+pip install -r requirements.txt
 
-# Live per-message view
 python consume.py --broker kafka
-
-# MQTT live view
-python consume.py --broker mqtt
-
-# Stats only (aggregate msg/s per second)
-python consume.py --broker kafka --stats-only
-
-# Filter specific robots
-python consume.py --broker kafka --robots 1,3,5
+python consume.py --broker mqtt --stats-only
 ```
 
 Output example:
