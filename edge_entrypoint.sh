@@ -13,6 +13,7 @@ set -euo pipefail
 : "${MSG_TYPE:=multi}"
 : "${RATE_HZ:=10}"
 : "${MQTT_QOS:=1}"               # 0 = fire-and-forget, 1 = at-least-once
+: "${PAYLOAD_FORMAT:=cdr}"       # cdr (binary, default) or json
 
 # ROS setup scripts reference unset variables; relax set -u for the source step.
 set +u
@@ -55,7 +56,7 @@ ${NODE_NAME}:
   ros__parameters:
     subscriptions_yaml: |
 $(printf '%s\n' "${SUBS_YAML}" | sed 's/^/      /')
-    kafka.payload_format: cdr
+    kafka.payload_format: "${PAYLOAD_FORMAT}"
     kafka.bootstrap_servers: "${BROKER_HOST}:9092"
     kafka.topic_prefix: ros2
     kafka.message_key: "robot_${ROBOT_ID}"

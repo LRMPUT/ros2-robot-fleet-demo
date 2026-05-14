@@ -14,6 +14,7 @@ OUT="${2:?usage: ./gen_fleet.sh <num_robots> <output_file>}"
 BROKER="${BROKER:-kafka}"
 RATE_HZ="${RATE_HZ:-10}"
 MSG_TYPE="${MSG_TYPE:-multi}"
+PAYLOAD_FORMAT="${PAYLOAD_FORMAT:-cdr}"
 
 IMAGE="ghcr.io/lrmput/ros2-kafka-dispatcher:latest"
 
@@ -37,6 +38,7 @@ for ((i = 1; i <= N; i++)); do
       SINK_KIND: "${BROKER}"
       BROKER_HOST: "localhost"
       MQTT_QOS: "1"
+      PAYLOAD_FORMAT: "${PAYLOAD_FORMAT}"
     volumes:
       - "\${BAG_PATH:?BAG_PATH is required}:/data/bag:ro"
       - ./edge_entrypoint.sh:/usr/local/bin/edge_entrypoint.sh:ro
@@ -48,4 +50,4 @@ for ((i = 1; i <= N; i++)); do
 EOF
 done
 
-echo "[gen_fleet] wrote ${N} robot services (broker=${BROKER}, msg_type=${MSG_TYPE}) → ${OUT}"
+echo "[gen_fleet] wrote ${N} robot services (broker=${BROKER}, msg_type=${MSG_TYPE}, payload=${PAYLOAD_FORMAT}) → ${OUT}"

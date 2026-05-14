@@ -108,6 +108,7 @@ Listening on KAFKA... (Ctrl+C to stop)
 | `BAG_PATH` | — | Path to ROS 2 bag directory |
 | `MSG_TYPE` | multi | `multi` \| `navsatfix` \| `odometry` \| `laserscan` \| `pointcloud2` |
 | `RATE_HZ` | 10 | Bag replay rate multiplier |
+| `PAYLOAD_FORMAT` | cdr | `cdr` (binary) or `json` (human-readable, Kafka only) |
 | `KAFKA_PARTITIONS` | 4 | Kafka partitions per topic (Kafka only) |
 
 ## Images
