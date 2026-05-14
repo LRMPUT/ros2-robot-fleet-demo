@@ -78,15 +78,20 @@ echo "[fleet] starting ${BROKER} broker..."
 NUM_ROBOTS="${N}" docker compose "${COMPOSE_ARGS[@]}" up -d broker
 sleep 6
 
-# 3. Start robots (parallel lifecycle init + bringup pad).
+# 3. Start robots in batches to avoid DDS multicast burst on host network.
 echo "[fleet] starting ${N} robots..."
-robot_services=""
-for ((i=1; i<=N; i++)); do robot_services+="robot_${i} "; done
+BATCH=5
+for ((i=1; i<=N; i+=BATCH)); do
+    batch_services=""
+    for ((j=i; j<i+BATCH && j<=N; j++)); do
+        batch_services+="robot_${j} "
+    done
+    NUM_ROBOTS="${N}" MSG_TYPE="${MSG_TYPE}" \
+        docker compose "${COMPOSE_ARGS[@]}" up -d --no-deps --remove-orphans ${batch_services}
+    [[ $((i + BATCH)) -le N ]] && sleep 3
+done
 
-NUM_ROBOTS="${N}" MSG_TYPE="${MSG_TYPE}" \
-    docker compose "${COMPOSE_ARGS[@]}" up -d --no-deps --remove-orphans ${robot_services}
-
-bringup_pad=$(( 8 + N / 2 ))
+bringup_pad=$(( 15 + N / 2 ))
 echo "[fleet] waiting ${bringup_pad}s for lifecycle init..."
 sleep "${bringup_pad}"
 

@@ -15,6 +15,11 @@ set -euo pipefail
 : "${MQTT_QOS:=1}"               # 0 = fire-and-forget, 1 = at-least-once
 : "${PAYLOAD_FORMAT:=json}"       # json (default) or cdr (binary)
 
+# Isolate each robot's DDS traffic in its own domain so the lifecycle
+# discovery doesn't compete across containers on the shared host network.
+# Domain IDs 0–101 are valid; robot IDs above 101 wrap around.
+export ROS_DOMAIN_ID=$(( (ROBOT_ID - 1) % 101 + 1 ))
+
 # ROS setup scripts reference unset variables; relax set -u for the source step.
 set +u
 source /opt/ros/humble/setup.bash
