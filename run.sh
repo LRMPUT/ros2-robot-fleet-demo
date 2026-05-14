@@ -19,7 +19,7 @@
 # Usage:
 #   N=10 BROKER=kafka BAG_PATH=/path/to/bag ./run.sh
 #   N=5  BROKER=mqtt  BAG_PATH=/path/to/bag ./run.sh
-#   ./run.sh --stop      # tear down everything
+#   ./run.sh --stop           # tear down all fleets (no args needed)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,13 +30,22 @@ BROKER="${BROKER:-kafka}"
 MSG_TYPE="${MSG_TYPE:-multi}"
 RATE_HZ="${RATE_HZ:-10}"
 
-FLEET_COMPOSE="/tmp/fleet_robots_${BROKER}_${N}.yml"
+# Store fleet compose files persistently so --stop always finds them.
+FLEET_DIR="${SCRIPT_DIR}/.fleet"
+mkdir -p "${FLEET_DIR}"
+FLEET_COMPOSE="${FLEET_DIR}/robots_${BROKER}_${N}.yml"
 COMPOSE_ARGS=(-f "docker-compose.${BROKER}.yml" -f "${FLEET_COMPOSE}")
 
 stop_fleet() {
     echo "[fleet] tearing down..."
-    NUM_ROBOTS="${N}" docker compose "${COMPOSE_ARGS[@]}" down -v --remove-orphans 2>&1 | tail -3 || true
-    rm -f "${FLEET_COMPOSE}"
+    # If the fleet compose file exists, use it for a clean shutdown.
+    if [[ -f "${FLEET_COMPOSE}" ]]; then
+        NUM_ROBOTS="${N}" docker compose "${COMPOSE_ARGS[@]}" down -v --remove-orphans 2>&1 | tail -3 || true
+        rm -f "${FLEET_COMPOSE}"
+    else
+        # Fallback: tear down by project name (removes broker + any orphaned containers).
+        docker compose -f "docker-compose.${BROKER}.yml" down -v --remove-orphans 2>&1 | tail -3 || true
+    fi
 }
 
 if [[ "${1:-}" == "--stop" ]]; then
@@ -91,22 +100,19 @@ case "${BROKER}" in
         echo "    docker run --rm --network host confluentinc/cp-kafka:latest \\"
         echo "      kafka-topics --bootstrap-server localhost:9092 --list"
         echo ""
-        echo "  Demo consumer (live print):"
-        echo "    cd consumer && pip install -r requirements.txt"
-        echo "    python consume.py --broker kafka"
+        echo "  Consumer:"
+        echo "    docker run --rm --network host ros2-fleet-consumer --broker kafka"
         ;;
     mqtt)
         echo "  Broker    : localhost:1883"
         echo "  Topics    : ros2/robot_<id>/gnss | /odom | /scan | /points"
         echo ""
-        echo "  Quick check (mosquitto_sub):"
+        echo "  Quick check:"
         echo "    mosquitto_sub -h localhost -p 1883 -t 'ros2/#' -v"
         echo ""
-        echo "  Demo consumer (live print):"
-        echo "    cd consumer && pip install -r requirements.txt"
-        echo "    python consume.py --broker mqtt"
+        echo "  Consumer:"
+        echo "    docker run --rm --network host ros2-fleet-consumer --broker mqtt"
         ;;
 esac
 echo ""
 echo "  To stop: ./run.sh --stop"
-echo "        or: N=${N} BROKER=${BROKER} BAG_PATH=${BAG_PATH} ./run.sh --stop"

@@ -1,4 +1,4 @@
-/tmp/fleet_robots_*.yml
+/.fleet/
 __pycache__/
 *.pyc
 .env
