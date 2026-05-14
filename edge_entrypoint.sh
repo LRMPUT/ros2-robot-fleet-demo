@@ -82,6 +82,7 @@ $(printf '%s\n' "${SUBS_YAML}" | sed 's/^/      /')
     mqtt.client_id: "mosquitto_sink_${ROBOT_ID}"
     mqtt.topic_prefix: ros2
     mqtt.qos: ${MQTT_QOS}
+    mqtt.payload_format: "${PAYLOAD_FORMAT}"
     metrics.enabled: false
 EOF
         ;;
