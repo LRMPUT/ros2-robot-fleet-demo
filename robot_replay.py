@@ -82,7 +82,7 @@ class BagLooper:
             del self._reader
         try:
             self._reader = rosbag2_py.SequentialReader()
-            storage_options = rosbag2_py.StorageOptions(uri=self._bag_path, storage_id="sqlite3")
+            storage_options = rosbag2_py.StorageOptions(uri=self._bag_path, storage_id="")
             converter_options = rosbag2_py.ConverterOptions("", "")
             self._reader.open(storage_options, converter_options)
             # Filter to topics matching our type (the bag may contain other types)

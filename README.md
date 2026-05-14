@@ -108,6 +108,33 @@ docker build -f docker/Dockerfile --build-arg ROS_DISTRO=humble \
     -t ghcr.io/lrmput/ros2-kafka-dispatcher:latest .
 ```
 
+## Using the INRAE field campaign bag
+
+The demo was developed using a real ROS 1 bag from a leader/follower
+agricultural campaign at INRAE Clermont-Ferrand (CHIST-ERA project).
+
+**Available at:** `rorbots_follower_leader_parcelle_1MONT.bag` (~345 MB)
+— see the [SIGSPATIAL 2026 paper](https://github.com/LRMPUT/ros2_dispatcher)
+for the Zenodo DOI.
+
+```bash
+# 1. Convert (one-time, ~2 min)
+./convert_bag.sh rorbots_follower_leader_parcelle_1MONT.bag
+# → bags/rorbots_follower_leader_parcelle_1MONT_ros2/
+
+# 2. Run 10 robots → Kafka
+./examples/inrae_field_campaign.sh kafka 10
+
+# 3. Live consumer (second terminal)
+cd consumer && python consume.py --broker kafka --stats-only
+```
+
+The bag contains NavSatFix, Odometry, LaserScan and PointCloud2 topics.
+`robot_replay.py` selects topics **by message type**, not by name, so it
+works with any bag that has those four ROS 2 types.
+Each simulated robot gets its GPS position shifted by ~11 m (Δlat/Δlon = 1e-4 × robot\_id)
+so the fleet appears spatially distributed across the field.
+
 ## Decoding CDR in Python
 
 ```python
