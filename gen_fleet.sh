@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
-# Generate a Compose fragment with N robot services for the edge topology.
+# Generate a Compose fragment with N robot services (edge topology).
 # Each robot container runs its own kafka_sink or mosquitto_sink alongside
 # the publisher — no central sink needed.
 #
+# Fleet routing (FLEET_ROUTING=1, default for Kafka):
+#   All robots write to one shared Kafka fleet topic (ros2.fleet.<suffix>)
+#   with kafka_key=robot_<id>, enabling a single ksqlDB query for all robots.
+#
 # Usage: BROKER=kafka ./gen_fleet.sh <num_robots> <output_file>
-# Env:   BROKER   — kafka (default) or mqtt
-#        RATE_HZ  — replay rate (default: 10)
-#        MSG_TYPE — multi (default) | navsatfix | odometry | laserscan | pointcloud2
+# Env:   BROKER        — kafka (default) | mqtt
+#        RATE_HZ       — replay rate (default: 10)
+#        MSG_TYPE      — multi (default) | navsatfix | odometry | laserscan | pointcloud2
+#        FLEET_ROUTING — 1 (default for kafka) | 0 (per-robot topics)
 set -euo pipefail
 
 N="${1:?usage: ./gen_fleet.sh <num_robots> <output_file>}"
@@ -14,11 +19,11 @@ OUT="${2:?usage: ./gen_fleet.sh <num_robots> <output_file>}"
 BROKER="${BROKER:-kafka}"
 RATE_HZ="${RATE_HZ:-10}"
 MSG_TYPE="${MSG_TYPE:-multi}"
-# Default payload: JSON for Kafka (consumer-friendly), CDR for MQTT (smaller, avoids
-# introspection issues with nested message types like NavSatFix on some builds).
 if [[ "${BROKER}" == "mqtt" ]]; then
+    FLEET_ROUTING="${FLEET_ROUTING:-0}"
     PAYLOAD_FORMAT="${PAYLOAD_FORMAT:-cdr}"
 else
+    FLEET_ROUTING="${FLEET_ROUTING:-1}"
     PAYLOAD_FORMAT="${PAYLOAD_FORMAT:-json}"
 fi
 
@@ -44,6 +49,7 @@ for ((i = 1; i <= N; i++)); do
       BROKER_HOST: "localhost"
       MQTT_QOS: "1"
       PAYLOAD_FORMAT: "${PAYLOAD_FORMAT}"
+      FLEET_ROUTING: "${FLEET_ROUTING}"
     volumes:
       - "\${BAG_PATH:?BAG_PATH is required}:/data/bag:ro"
       - ./edge_entrypoint.sh:/usr/local/bin/edge_entrypoint.sh:ro
@@ -55,4 +61,4 @@ for ((i = 1; i <= N; i++)); do
 EOF
 done
 
-echo "[gen_fleet] wrote ${N} robot services (broker=${BROKER}, msg_type=${MSG_TYPE}, payload=${PAYLOAD_FORMAT}) → ${OUT}"
+echo "[gen_fleet] wrote ${N} robot services (broker=${BROKER}, msg_type=${MSG_TYPE}, fleet_routing=${FLEET_ROUTING}, payload=${PAYLOAD_FORMAT}) → ${OUT}"

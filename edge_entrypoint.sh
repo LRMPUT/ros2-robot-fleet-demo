@@ -1,9 +1,20 @@
 #!/usr/bin/env bash
 # Edge topology entrypoint: one container runs BOTH the robot publisher AND
-# its own kafka_sink (or mosquitto_sink), so each simulated robot has a
-# private Dispatcher instance that talks DDS locally and produces directly
-# to the broker.  Distinct from the gateway topology where one central sink
-# subscribes to all robots' DDS topics.
+# its own kafka_sink (or mosquitto_sink), so each robot has a private
+# Dispatcher instance that talks DDS locally and produces directly to the broker.
+#
+# Fleet routing (FLEET_ROUTING=1, default for Kafka):
+#   All robots write to ONE shared Kafka topic (ros2.fleet.<suffix>) using
+#   kafka_key=robot_<id> to distinguish robots.  This allows a single ksqlDB
+#   query to process data from all robots.
+#
+#   ros2.fleet.gnss  key=robot_1  ← robot 1
+#   ros2.fleet.gnss  key=robot_2  ← robot 2   → ksqlDB fleet_gnss stream
+#   ros2.fleet.gnss  key=robot_N  ← robot N
+#
+# Per-robot routing (FLEET_ROUTING=0):
+#   Each robot writes to its own topic (ros2.robot_<id>.<suffix>).
+#   Useful for debugging individual robots or non-ksqlDB consumers.
 set -euo pipefail
 
 : "${ROBOT_ID:?ROBOT_ID env var is required}"
@@ -13,6 +24,14 @@ set -euo pipefail
 : "${MSG_TYPE:=multi}"
 : "${RATE_HZ:=10}"
 : "${MQTT_QOS:=1}"               # 0 = fire-and-forget, 1 = at-least-once
+# Fleet routing: 1 (default for Kafka, enables single ksqlDB topic),
+#                0 to use per-robot topics.
+# MQTT always uses per-robot topics (fleet routing not yet supported).
+if [[ "${SINK_KIND}" == "mqtt" ]]; then
+    : "${FLEET_ROUTING:=0}"
+else
+    : "${FLEET_ROUTING:=1}"
+fi
 # JSON default for Kafka; CDR default for MQTT (mosquitto_sink JSON path has
 # introspection issues with nested message types such as NavSatFix).
 if [[ "${SINK_KIND}" == "mqtt" ]]; then
@@ -47,18 +66,28 @@ case "${MSG_TYPE}" in
     *) echo "Unknown MSG_TYPE=${MSG_TYPE}" >&2; exit 1 ;;
 esac
 
+# Build subscriptions_yaml.
+# Fleet routing: all robots share one Kafka topic, distinguished by kafka_key.
+# Per-robot routing: each robot gets its own topic (ros2.robot_<id>.<suffix>).
 SUBS_YAML=""
 for p in "${PAIRS[@]}"; do
     IFS='|' read -r ros_type suffix <<< "$p"
-    SUBS_YAML+="- topic_name: /robot_${ROBOT_ID}/${suffix}
+    if [[ "${FLEET_ROUTING}" == "1" && "${SINK_KIND}" == "kafka" ]]; then
+        SUBS_YAML+="- topic_name: /robot_${ROBOT_ID}/${suffix}
+  msg_type: ${ros_type}
+  kafka_name: fleet.${suffix}
+  kafka_key: robot_${ROBOT_ID}
+"
+    else
+        SUBS_YAML+="- topic_name: /robot_${ROBOT_ID}/${suffix}
   msg_type: ${ros_type}
 "
+    fi
 done
 
 NODE_NAME="kafka_sink_${ROBOT_ID}"
 EXE="kafka_sink_node_exe"
 PKG="kafka_sink"
-TOPIC_PREFIX_PARAM_NAME="kafka.topic_prefix"
 case "${SINK_KIND}" in
     kafka)
         PARAMS_FILE="/tmp/sink_params_${ROBOT_ID}.yaml"
@@ -100,7 +129,7 @@ EOF
     *) echo "Unknown SINK_KIND=${SINK_KIND}" >&2; exit 1 ;;
 esac
 
-echo "[edge] robot_id=${ROBOT_ID} sink=${SINK_KIND} broker=${BROKER_HOST}"
+echo "[edge] robot_id=${ROBOT_ID} sink=${SINK_KIND} fleet_routing=${FLEET_ROUTING} payload=${PAYLOAD_FORMAT}"
 echo "[edge] params:"; sed 's/^/  | /' "${PARAMS_FILE}"
 
 # 1. Start the per-robot sink in the background with a unique node name.
