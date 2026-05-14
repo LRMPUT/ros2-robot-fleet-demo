@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Convert a ROS 1 (.bag) file to a ROS 2 bag directory readable by the fleet.
+# Runs entirely in Docker — no local Python or ROS installation needed.
 #
 # Usage:
 #   ./convert_bag.sh /path/to/recording.bag [output_dir]
 #
 # Output defaults to ./bags/<bag_stem>_ros2/
-# Requires: pip install rosbags (no ROS installation needed)
 set -euo pipefail
 
-SRC="${1:?Usage: ./convert_bag.sh <input.bag> [output_dir]}"
+SRC="$(realpath "${1:?Usage: ./convert_bag.sh <input.bag> [output_dir]}")"
 STEM="$(basename "${SRC%.bag}")"
-DST="${2:-$(pwd)/bags/${STEM}_ros2}"
+DST="$(realpath --canonicalize-missing "${2:-$(pwd)/bags/${STEM}_ros2}")"
 
 if [[ ! -f "${SRC}" ]]; then
     echo "ERROR: ${SRC} not found." >&2
@@ -24,37 +24,36 @@ if [[ -d "${DST}" ]]; then
 fi
 
 echo "============================================="
-echo "  ROS 1 → ROS 2 bag conversion"
+echo "  ROS 1 → ROS 2 bag conversion (Docker)"
 echo "  Source : ${SRC}"
 echo "  Output : ${DST}"
 echo "============================================="
 
-# Install rosbags if missing
-if ! python3 -c "import rosbags" 2>/dev/null; then
-    echo "[convert] Installing rosbags..."
-    pip install --quiet rosbags
-fi
+mkdir -p "${DST}"
 
-mkdir -p "$(dirname "${DST}")"
-
-rosbags-convert \
-    --src "${SRC}" \
-    --dst "${DST}" \
-    --dst-version 8 \
-    --dst-typestore ros2_humble
+docker run --rm \
+    -v "${SRC}:/input/bag.bag:ro" \
+    -v "${DST}:/output" \
+    python:3.11-slim \
+    bash -c "
+        pip install --quiet rosbags && \
+        rosbags-convert \
+            --src /input/bag.bag \
+            --dst /output \
+            --dst-version 8 \
+            --dst-typestore ros2_humble && \
+        echo '' && \
+        echo 'Topics found:' && \
+        python3 -c \"
+import rosbags.rosbag2 as rb2
+with rb2.Reader('/output') as r:
+    for conn in r.connections:
+        print(f'  {conn.topic:<50} {conn.msgtype}')
+\"
+    "
 
 echo ""
 echo "Converted bag ready at: ${DST}"
-echo ""
-echo "Topics found:"
-python3 - "${DST}" <<'PY'
-import sys
-import rosbags.rosbag2 as rb2
-with rb2.Reader(sys.argv[1]) as r:
-    for conn in r.connections:
-        print(f"  {conn.topic:<50} {conn.msgtype}")
-PY
-
 echo ""
 echo "Run the fleet:"
 echo "  N=10 BROKER=kafka BAG_PATH=${DST} ./run.sh"

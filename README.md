@@ -6,18 +6,13 @@ Each robot replays a ROS 2 bag and has its own private sink (edge topology).
 ## Prerequisites
 
 - Docker Engine ≥ 24 with Compose v2
-- A converted **ROS 2 bag** directory (must contain `metadata.yaml`)
-- Python 3.10+ with a ROS 2 Humble environment (for the demo consumer)
+- A ROS 2 bag directory (see conversion below if you have a ROS 1 `.bag`)
 
-### Convert a ROS 1 bag (one-time)
+### Convert a ROS 1 bag (one-time, uses Docker)
 
 ```bash
-python3 -m venv /tmp/rosbags_venv
-/tmp/rosbags_venv/bin/pip install rosbags
-/tmp/rosbags_venv/bin/rosbags-convert \
-    --src my_recording.bag \
-    --dst /tmp/my_bag_ros2 \
-    --dst-version 8 --dst-typestore ros2_humble
+./convert_bag.sh my_recording.bag
+# → bags/my_recording_ros2/
 ```
 
 ## Quickstart
