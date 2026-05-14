@@ -99,6 +99,28 @@ Listening on KAFKA... (Ctrl+C to stop)
 [stats]     925 msg/s   11340.2 KB/s  robots=10  total=55,500
 ```
 
+## Live map visualizer
+
+Shows each robot's GPS position on an OpenStreetMap map, updating in real-time.
+Auto-centers and fits bounds once two or more robots appear.
+
+```bash
+# Build once
+docker build -t ros2-fleet-visualizer -f visualizer/Dockerfile .
+
+# Kafka fleet
+docker run --rm --network host -p 8080:8080 ros2-fleet-visualizer --broker kafka
+
+# MQTT fleet
+docker run --rm --network host -p 8080:8080 ros2-fleet-visualizer --broker mqtt
+```
+
+Then open **http://localhost:8080** in a browser.
+
+Each robot gets a distinct color. The panel shows the number of active robots
+and the GNSS message rate. Works with both `json` and `cdr` payload formats
+(auto-detected from the Kafka `payload_format` header).
+
 ## Options
 
 | Variable | Default | Description |

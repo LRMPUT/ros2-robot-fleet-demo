@@ -169,7 +169,11 @@ def consume_kafka(bootstrap: str, robot_filter: Optional[set[int]],
         if msg is None:
             continue
         if msg.error():
-            print(f"[kafka error] {msg.error()}", file=sys.stderr, flush=True)
+            from confluent_kafka import KafkaError
+            # UNKNOWN_TOPIC_OR_PART is expected noise for regex subscriptions
+            # when no matching topics exist yet; suppress it.
+            if msg.error().code() != KafkaError.UNKNOWN_TOPIC_OR_PART:
+                print(f"[kafka error] {msg.error()}", file=sys.stderr, flush=True)
             continue
         parsed = _parse_kafka_topic(msg.topic())
         if parsed is None:
