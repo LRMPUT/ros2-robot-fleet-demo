@@ -43,12 +43,13 @@ def _color(robot_id: int) -> str:
 
 def _broadcast(event: dict) -> None:
     dead = set()
-    for q in _subscribers:
+    for q in list(_subscribers):  # copy to avoid mutation-during-iteration
         try:
             q.put_nowait(event)
         except queue.Full:
             dead.add(q)
-    _subscribers -= dead
+    for q in dead:
+        _subscribers.discard(q)
 
 
 def _on_gnss(robot_id: int, lat: float, lon: float) -> None:
