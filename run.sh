@@ -38,12 +38,13 @@ COMPOSE_ARGS=(-f "docker-compose.${BROKER}.yml" -f "${FLEET_COMPOSE}")
 
 stop_fleet() {
     echo "[fleet] tearing down..."
-    # If the fleet compose file exists, use it for a clean shutdown.
     if [[ -f "${FLEET_COMPOSE}" ]]; then
-        NUM_ROBOTS="${N}" docker compose "${COMPOSE_ARGS[@]}" down -v --remove-orphans 2>&1 | tail -3 || true
+        # BAG_PATH is required by the compose template but irrelevant for `down`.
+        BAG_PATH=/dev/null NUM_ROBOTS="${N}" \
+            docker compose "${COMPOSE_ARGS[@]}" down -v --remove-orphans 2>&1 | tail -3 || true
         rm -f "${FLEET_COMPOSE}"
     else
-        # Fallback: tear down by project name (removes broker + any orphaned containers).
+        # Fallback: tear down by project name (broker + any orphaned containers).
         docker compose -f "docker-compose.${BROKER}.yml" down -v --remove-orphans 2>&1 | tail -3 || true
     fi
 }
