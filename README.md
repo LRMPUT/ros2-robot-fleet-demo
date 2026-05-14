@@ -3,6 +3,8 @@
 Simulate a fleet of N robots publishing sensor data to **Apache Kafka** or **MQTT**.
 Each robot replays a ROS 2 bag and has its own private sink (edge topology).
 
+![10-robot GNSS trajectories on satellite map](docs/trajectories.png)
+
 ## Prerequisites
 
 - Docker Engine ≥ 24 with Compose v2
@@ -174,6 +176,46 @@ The bag contains NavSatFix, Odometry, LaserScan and PointCloud2 topics.
 works with any bag that has those four ROS 2 types.
 Each simulated robot gets its GPS position shifted by ~11 m (Δlat/Δlon = 1e-4 × robot\_id)
 so the fleet appears spatially distributed across the field.
+
+## Trajectory recording and plotting
+
+### Extract directly from a bag (recommended)
+
+Reads NavSatFix from the bag's SQLite3 file — **no ROS installation required**.
+Applies the same per-robot offset as `robot_replay.py` and writes one file per robot.
+
+```bash
+pip install pandas geopandas folium contextily matplotlib
+
+python3 tools/extract_gnss_from_bag.py \
+    --bag bags/rorbots_follower_leader_parcelle_1MONT_ros2 \
+    --robots 1-10 \
+    --out trajectories/
+```
+
+### Record from a live fleet
+
+```bash
+# Kafka fleet
+python3 tools/record_gnss.py --broker kafka --robots 1-10 --out trajectories/ --duration 120
+
+# MQTT fleet
+python3 tools/record_gnss.py --broker mqtt --robots 1-10 --out trajectories/ --duration 120
+```
+
+Both approaches write `robot_N_gnss.txt` files (`timestamp_ns / latitude / longitude / altitude`).
+Auto-detects JSON and CDR payloads.
+
+### Plot trajectories
+
+```bash
+python3 tools/plot_trajectories.py trajectories/
+```
+
+Outputs:
+- `trajectories.html` — interactive Leaflet map (open in browser)
+- `trajectories.png` — 500 dpi satellite map (Esri WorldImagery)
+- `trajectories.pdf` — vector version for publications
 
 ## Decoding CDR in Python
 
