@@ -216,19 +216,6 @@ Outputs:
 - `trajectories.png` — 500 dpi satellite map (Esri WorldImagery)
 - `trajectories.pdf` — vector version for publications
 
-### Alternative: extract directly from a bag
-
-If no fleet is running, `extract_gnss_from_bag.py` reads NavSatFix directly
-from the `.db3` bag file (no ROS installation required) and applies the same
-per-robot offset as `robot_replay.py`:
-
-```bash
-python3 tools/extract_gnss_from_bag.py \
-    --bag bags/rorbots_follower_leader_parcelle_1MONT_ros2 \
-    --robots 1-10 \
-    --out trajectories/
-```
-
 ## Decoding CDR in Python
 
 ```python
