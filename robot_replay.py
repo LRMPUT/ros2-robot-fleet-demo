@@ -85,14 +85,16 @@ class BagLooper:
             storage_options = rosbag2_py.StorageOptions(uri=self._bag_path, storage_id="")
             converter_options = rosbag2_py.ConverterOptions("", "")
             self._reader.open(storage_options, converter_options)
-            # Filter to topics matching our type (the bag may contain other types)
+            # Filter to the FIRST topic matching our type. Using all matching
+            # topics would interleave messages from multiple robots (e.g. both
+            # /follower/gps/fix and /leader/gps/fix), producing a zigzag trajectory.
             topics_meta = self._reader.get_all_topics_and_types()
             wanted = [m.name for m in topics_meta if m.type == self._topic_type_str]
             if not wanted:
                 raise RuntimeError(
                     f"No topic of type {self._topic_type_str} found in {self._bag_path}"
                 )
-            self._reader.set_filter(rosbag2_py.StorageFilter(topics=wanted))
+            self._reader.set_filter(rosbag2_py.StorageFilter(topics=[wanted[0]]))
         except Exception as e:
             # Mark iterator as permanently broken. Re-opening failed (bag deleted,
             # corrupted, or permission denied mid-loop). Next __next__ will fail
