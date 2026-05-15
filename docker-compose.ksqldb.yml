@@ -1,0 +1,131 @@
+# ksqlDB analytics overlay for ros2-robot-fleet-demo.
+#
+# Extend the Kafka fleet stack with ksqlDB, Schema Registry,
+# Kafka UI, and the GIS4IoRT API:
+#
+#   N=10 BROKER=kafka BAG_PATH=/path/to/bag \
+#     docker compose -f docker-compose.kafka.yml \
+#                    -f docker-compose.ksqldb.yml \
+#                    up -d
+#
+# Services added by this overlay:
+#   schema-registry  — Confluent Schema Registry (port 8081)
+#   ksqldb-server    — ksqlDB REST server with GIS UDF (port 8088)
+#   ksqldb-init      — one-shot loader for ksqldb/ksql-setup.sql
+#   kafka-ui         — Provectus Kafka UI (port 8090)
+#   gis-api          — GIS4IoRT FastAPI backend (port 8000, /docs)
+#
+# Prerequisites:
+#   1. docker-compose.kafka.yml in the same compose project
+#      (provides the `broker` service at broker:29092 on the default network).
+#   2. The GIS4IoRT-ksqlDB submodule populated:
+#        git submodule update --init --recursive
+#      Upstream repo: https://github.com/AntoniSopata/GIS4IoRT-ksqlDB
+#      The submodule provides Dockerfile.api, the FastAPI app, and the GIS UDF jar.
+
+services:
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:8.0.0
+    hostname: schema-registry
+    depends_on:
+      broker:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: broker:29092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ksqldb-server:
+    image: confluentinc/ksqldb-server:0.29.0
+    hostname: ksqldb-server
+    depends_on:
+      broker:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    ports:
+      - "8088:8088"
+    environment:
+      KSQL_BOOTSTRAP_SERVERS: broker:29092
+      KSQL_KSQL_SERVICE_ID: ksqldb_fleet
+      KSQL_CACHE_MAX_BYTES_BUFFERING: 0
+      KSQL_KSQL_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      KSQL_KSQL_LOGGING_PROCESSING_TOPIC_REPLICATION_FACTOR: 1
+      KSQL_KSQL_LOGGING_PROCESSING_TOPIC_AUTO_CREATE: "true"
+      KSQL_KSQL_LOGGING_PROCESSING_STREAM_AUTO_CREATE: "true"
+      KSQL_KSQL_EXTENSION_DIR: /opt/ksqldb-udfs
+    volumes:
+      - ./GIS4IoRT-ksqlDB/deployments/ksqldb/udf/build/libs/gis-udf-1.0.0.jar:/opt/ksqldb-udfs/gis-udf.jar:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # One-shot service: loads ksql-setup.sql into ksqlDB on first start.
+  ksqldb-init:
+    image: confluentinc/ksqldb-cli:0.29.0
+    depends_on:
+      ksqldb-server:
+        condition: service_healthy
+    restart: "no"
+    volumes:
+      - ./ksqldb/ksql-setup.sql:/tmp/ksql-setup.sql:ro
+    entrypoint: >
+      bash -c "
+        echo 'Initializing ksqlDB schema...'
+        ksql http://ksqldb-server:8088 -f /tmp/ksql-setup.sql &&
+        echo 'ksqlDB schema loaded.'
+      "
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    hostname: kafka-ui
+    depends_on:
+      broker:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: fleet
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: broker:29092
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
+      KAFKA_CLUSTERS_0_KSQLDBSERVER: http://ksqldb-server:8088
+
+  gis-api:
+    # Builds from the submodule's Dockerfile so we track upstream verbatim.
+    build:
+      context: ./GIS4IoRT-ksqlDB/deployments/ksqldb
+      dockerfile: Dockerfile.api
+    hostname: gis-api
+    depends_on:
+      broker:
+        condition: service_healthy
+      ksqldb-server:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      ACTIVE_ADAPTER: ksqldb
+      KAFKA_BOOTSTRAP_SERVERS: broker:29092
+      KSQLDB_DB_NAME: gis4iort.db
+      # BAG_PATH forwarded from host env (used by the /historical endpoint).
+      ROSBAG_PATH: "${BAG_PATH:-/bags}"
+    volumes:
+      # Bind-mount the submodule's FastAPI app — upstream Dockerfile.api expects
+      # /code/app at runtime (this also lets `git submodule update --remote`
+      # pick up code changes without rebuilding the image).
+      - ./GIS4IoRT-ksqlDB/app:/code/app:ro
+      # Mount bag read-only for the historical GNSS endpoint.
+      - "${BAG_PATH:-/dev/null}:/bags:ro"
+    restart: unless-stopped

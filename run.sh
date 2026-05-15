@@ -1,25 +1,29 @@
 #!/usr/bin/env bash
 # Start a fleet of N simulated robots publishing sensor data to Kafka or MQTT.
 #
-# Each robot replays a ROS 2 bag and has its own private sink (edge topology):
-#   NavSatFix  @ 10 Hz  → ros2.robot_<id>.gnss  (Kafka) / ros2/robot_<id>/gnss  (MQTT)
-#   Odometry   @ 20 Hz  → ros2.robot_<id>.odom
-#   LaserScan  @ 50 Hz  → ros2.robot_<id>.scan
-#   PointCloud2@ 12.5Hz → ros2.robot_<id>.points
+# Each robot is isolated: its own ROS domain, its own sink instance.
+# With fleet routing (default for Kafka), all robots write to a single shared
+# Kafka topic (ros2.fleet.<suffix>) keyed by robot_id, so one ksqlDB query
+# covers the whole fleet:
+#
+#   robot_1 (domain 1) → own sink → ros2.fleet.gnss  key=robot_1 ─┐
+#   robot_2 (domain 2) → own sink → ros2.fleet.gnss  key=robot_2 ─┤ → ksqlDB
+#   robot_N (domain N) → own sink → ros2.fleet.gnss  key=robot_N ─┘
 #
 # Required env:
-#   BAG_PATH   — path to a converted ROS 2 bag directory (must contain metadata.yaml)
+#   BAG_PATH      — path to a ROS 2 bag directory (must contain metadata.yaml)
 #
 # Optional env:
-#   N          — number of robots (default: 10)
-#   BROKER     — kafka (default) or mqtt
-#   MSG_TYPE   — multi (default) | navsatfix | odometry | laserscan | pointcloud2
-#   RATE_HZ    — replay rate multiplier (default: 10)
+#   N             — number of robots (default: 10)
+#   BROKER        — kafka (default) | mqtt
+#   MSG_TYPE      — multi (default) | navsatfix | odometry | laserscan | pointcloud2
+#   RATE_HZ       — replay rate multiplier (default: 10)
+#   FLEET_ROUTING — 1 (default for kafka) | 0 for per-robot topics
 #
 # Usage:
 #   N=10 BROKER=kafka BAG_PATH=/path/to/bag ./run.sh
 #   N=5  BROKER=mqtt  BAG_PATH=/path/to/bag ./run.sh
-#   ./run.sh --stop           # tear down all fleets (no args needed)
+#   ./run.sh --stop           # tear down all fleet containers
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,6 +33,11 @@ N="${N:-10}"
 BROKER="${BROKER:-kafka}"
 MSG_TYPE="${MSG_TYPE:-multi}"
 RATE_HZ="${RATE_HZ:-10}"
+if [[ "${BROKER}" == "mqtt" ]]; then
+    FLEET_ROUTING="${FLEET_ROUTING:-0}"
+else
+    FLEET_ROUTING="${FLEET_ROUTING:-1}"
+fi
 
 # Store fleet compose files persistently so --stop always finds them.
 FLEET_DIR="${SCRIPT_DIR}/.fleet"
@@ -39,12 +48,10 @@ COMPOSE_ARGS=(-f "docker-compose.${BROKER}.yml" -f "${FLEET_COMPOSE}")
 stop_fleet() {
     echo "[fleet] tearing down..."
     if [[ -f "${FLEET_COMPOSE}" ]]; then
-        # BAG_PATH is required by the compose template but irrelevant for `down`.
-        BAG_PATH=/dev/null NUM_ROBOTS="${N}" \
+        BAG_PATH=/dev/null N="${N}" \
             docker compose "${COMPOSE_ARGS[@]}" down -v --remove-orphans 2>&1 | tail -3 || true
         rm -f "${FLEET_COMPOSE}"
     else
-        # Fallback: tear down by project name (broker + any orphaned containers).
         docker compose -f "docker-compose.${BROKER}.yml" down -v --remove-orphans 2>&1 | tail -3 || true
     fi
 }
@@ -59,23 +66,24 @@ if [[ ! -f "${BAG_PATH}/metadata.yaml" ]]; then
     echo "ERROR: ${BAG_PATH}/metadata.yaml not found — BAG_PATH must point to a ROS 2 bag directory." >&2
     exit 2
 fi
-export BAG_PATH MSG_TYPE RATE_HZ
+export BAG_PATH MSG_TYPE RATE_HZ FLEET_ROUTING
 
 echo "============================================="
 echo "  ROS 2 Robot Fleet"
 echo "  Robots : ${N}"
 echo "  Broker : ${BROKER}"
 echo "  Topics : ${MSG_TYPE}"
+echo "  Fleet  : $([ "${FLEET_ROUTING}" == "1" ] && echo "shared topic (ros2.fleet.*)" || echo "per-robot topics")"
 echo "  Bag    : ${BAG_PATH}"
 echo "============================================="
 
 # 1. Generate per-robot compose fragment.
-BROKER="${BROKER}" MSG_TYPE="${MSG_TYPE}" RATE_HZ="${RATE_HZ}" \
+BROKER="${BROKER}" MSG_TYPE="${MSG_TYPE}" RATE_HZ="${RATE_HZ}" FLEET_ROUTING="${FLEET_ROUTING}" \
     "${SCRIPT_DIR}/gen_fleet.sh" "${N}" "${FLEET_COMPOSE}"
 
 # 2. Start broker.
 echo "[fleet] starting ${BROKER} broker..."
-NUM_ROBOTS="${N}" docker compose "${COMPOSE_ARGS[@]}" up -d broker
+N="${N}" docker compose "${COMPOSE_ARGS[@]}" up -d broker
 sleep 6
 
 # 3. Start robots in batches to avoid DDS multicast burst on host network.
@@ -86,8 +94,8 @@ for ((i=1; i<=N; i+=BATCH)); do
     for ((j=i; j<i+BATCH && j<=N; j++)); do
         batch_services+="robot_${j} "
     done
-    NUM_ROBOTS="${N}" MSG_TYPE="${MSG_TYPE}" \
-        docker compose "${COMPOSE_ARGS[@]}" up -d --no-deps --remove-orphans ${batch_services}
+    N="${N}" MSG_TYPE="${MSG_TYPE}" \
+        docker compose "${COMPOSE_ARGS[@]}" up -d --no-deps ${batch_services}
     [[ $((i + BATCH)) -le N ]] && sleep 3
 done
 
@@ -96,18 +104,21 @@ echo "[fleet] waiting ${bringup_pad}s for lifecycle init..."
 sleep "${bringup_pad}"
 
 echo ""
-echo "Fleet is running. Topics available:"
+echo "Fleet is running."
 case "${BROKER}" in
     kafka)
-        echo "  Bootstrap : localhost:9092"
-        echo "  Topics    : ros2.robot_<id>.gnss | .odom | .scan | .points"
+        if [[ "${FLEET_ROUTING}" == "1" ]]; then
+            echo "  Bootstrap : localhost:9092"
+            echo "  Topics    : ros2.fleet.gnss | ros2.fleet.odom | ros2.fleet.scan | ros2.fleet.points"
+            echo "  Key       : robot_<id> (identifies the source robot)"
+        else
+            echo "  Bootstrap : localhost:9092"
+            echo "  Topics    : ros2.robot_<id>.gnss | .odom | .scan | .points"
+        fi
         echo ""
         echo "  Quick check:"
         echo "    docker run --rm --network host confluentinc/cp-kafka:latest \\"
         echo "      kafka-topics --bootstrap-server localhost:9092 --list"
-        echo ""
-        echo "  Consumer:"
-        echo "    docker run --rm --network host ros2-fleet-consumer --broker kafka"
         ;;
     mqtt)
         echo "  Broker    : localhost:1883"
@@ -115,9 +126,6 @@ case "${BROKER}" in
         echo ""
         echo "  Quick check:"
         echo "    mosquitto_sub -h localhost -p 1883 -t 'ros2/#' -v"
-        echo ""
-        echo "  Consumer:"
-        echo "    docker run --rm --network host ros2-fleet-consumer --broker mqtt"
         ;;
 esac
 echo ""
