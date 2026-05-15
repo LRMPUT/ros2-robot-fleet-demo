@@ -202,6 +202,10 @@ The optional `docker-compose.ksqldb.yml` overlay adds a real-time analytics laye
 top of the Kafka fleet stack: **ksqlDB**, **Schema Registry**, **Kafka UI**, and the
 **GIS4IoRT API** (geofencing + collision detection).
 
+The FastAPI app, `Dockerfile.api`, and GIS UDF jar all live in the
+[`GIS4IoRT-ksqlDB`](https://github.com/AntoniSopata/GIS4IoRT-ksqlDB) submodule
+(third-party, pinned). Our overlay just adds fleet-specific schema on top.
+
 ### Architecture
 
 ```
@@ -214,7 +218,26 @@ All robot sinks write JSON to the **same** Kafka topic; ksqlDB consumes it as a 
 stream and exposes it to the GIS4IoRT API.  No extra bridge or CDR→JSON converter is
 needed — the fleet stack already defaults to `PAYLOAD_FORMAT=json` for Kafka.
 
-### 1. Start the analytics stack
+### 1. Initialize the GIS4IoRT submodule
+
+```bash
+# One-time after cloning
+git submodule update --init --recursive
+```
+
+This populates `GIS4IoRT-ksqlDB/` from the upstream repo. The overlay compose builds
+the GIS API container from `GIS4IoRT-ksqlDB/deployments/ksqldb/Dockerfile.api` and
+mounts the UDF jar from `GIS4IoRT-ksqlDB/deployments/ksqldb/udf/build/libs/`.
+
+To pull upstream changes later:
+```bash
+git submodule update --remote GIS4IoRT-ksqlDB     # fetch latest upstream commit
+git diff GIS4IoRT-ksqlDB                          # review the bump
+# rebuild & smoke-test the stack
+git add GIS4IoRT-ksqlDB && git commit -m "bump GIS4IoRT-ksqlDB"
+```
+
+### 2. Start the analytics stack
 
 ```bash
 # Start ksqlDB + GIS API alongside the Kafka broker (do this first, before the fleet)
@@ -226,7 +249,7 @@ BAG_PATH=/path/to/bag \
 
 Wait ~30 s for ksqlDB to become healthy and for `ksqldb-init` to load the schema.
 
-### 2. Start the robot fleet
+### 3. Start the robot fleet
 
 ```bash
 # Fleet routing is on by default for Kafka (FLEET_ROUTING=1)
@@ -236,7 +259,7 @@ N=10 BROKER=kafka BAG_PATH=/path/to/bag ./run.sh
 Each robot's sink will publish to `ros2.fleet.gnss` (and `odom`, `scan`, `points`)
 with `kafka_key=robot_<id>` so ksqlDB can identify the source robot.
 
-### 3. Query live GNSS data
+### 4. Query live GNSS data
 
 ```bash
 # Open the ksqlDB CLI
