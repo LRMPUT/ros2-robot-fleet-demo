@@ -38,6 +38,9 @@ N=10 BROKER=kafka BAG_PATH=/tmp/my_bag_ros2 ./run.sh
 # 5 robots → MQTT
 N=5 BROKER=mqtt BAG_PATH=/tmp/my_bag_ros2 ./run.sh
 
+# 5 robots, each with its own Mosquitto broker (edge simulation)
+TOPOLOGY=per-robot N=5 BROKER=mqtt BAG_PATH=/tmp/my_bag_ros2 ./run.sh
+
 # Stop the fleet
 ./run.sh --stop
 ```
@@ -56,8 +59,54 @@ N=5 BROKER=mqtt BAG_PATH=/tmp/my_bag_ros2 ./run.sh
 | `scan`   | `sensor_msgs/msg/LaserScan`      | 50 Hz   |
 | `points` | `sensor_msgs/msg/PointCloud2`    | 12.5 Hz |
 
-Payloads are **CDR-serialized** ROS 2 messages. The `header.stamp` field
-carries the publish wall-clock time (`t0_ns = sec×10⁹ + nanosec`).
+Payloads are **CDR-serialized** by default for MQTT and **JSON-serialized**
+by default for Kafka. The `header.stamp` field carries the publish wall-clock
+time (`t0_ns = sec×10⁹ + nanosec`).
+
+## Payload format
+
+The serialization format is controlled by the `PAYLOAD_FORMAT` environment variable:
+
+| Value | Description |
+|-------|-------------|
+| `cdr` | Binary CDR (default for MQTT) |
+| `json` | JSON (default for Kafka) |
+
+```bash
+# MQTT with JSON payloads
+PAYLOAD_FORMAT=json N=5 BROKER=mqtt BAG_PATH=/path/to/bag ./run.sh
+
+# Kafka with CDR payloads
+PAYLOAD_FORMAT=cdr N=10 BROKER=kafka BAG_PATH=/path/to/bag ./run.sh
+```
+
+JSON payloads use field names from the ROS 2 message definition and support
+all four message types (`NavSatFix`, `Odometry`, `LaserScan`, `PointCloud2`).
+Infinite/NaN float values (e.g. out-of-range laser returns) are serialized as
+`null`.
+
+## Topology
+
+The `TOPOLOGY` environment variable selects how brokers are allocated:
+
+| Value | Description |
+|-------|-------------|
+| `shared` (default) | All robots write to one broker |
+| `per-robot` | Each robot gets its own broker (MQTT only) |
+
+```bash
+# Shared broker (default)
+N=10 BROKER=mqtt BAG_PATH=/path/to/bag ./run.sh
+
+# Per-robot brokers: robot 1 → :1883, robot 2 → :1884, …
+TOPOLOGY=per-robot N=5 BROKER=mqtt BAG_PATH=/path/to/bag ./run.sh
+
+# Stop
+TOPOLOGY=per-robot N=5 BROKER=mqtt ./run.sh --stop
+```
+
+In `per-robot` mode each robot's `header.frame_id` is set to `robot_<id>`
+so consumers can identify the source robot per message.
 
 ## Demo consumer
 

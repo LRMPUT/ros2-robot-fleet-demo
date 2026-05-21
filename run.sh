@@ -15,6 +15,7 @@
 #   BROKER     — kafka (default) or mqtt
 #   MSG_TYPE   — multi (default) | navsatfix | odometry | laserscan | pointcloud2
 #   RATE_HZ    — replay rate multiplier (default: 10)
+#   TOPOLOGY   — shared (default) | per-robot (MQTT only: one broker per robot)
 #
 # Usage:
 #   N=10 BROKER=kafka BAG_PATH=/path/to/bag ./run.sh
@@ -29,12 +30,18 @@ N="${N:-10}"
 BROKER="${BROKER:-kafka}"
 MSG_TYPE="${MSG_TYPE:-multi}"
 RATE_HZ="${RATE_HZ:-10}"
+TOPOLOGY="${TOPOLOGY:-shared}"
 
 # Store fleet compose files persistently so --stop always finds them.
 FLEET_DIR="${SCRIPT_DIR}/.fleet"
 mkdir -p "${FLEET_DIR}"
-FLEET_COMPOSE="${FLEET_DIR}/robots_${BROKER}_${N}.yml"
-COMPOSE_ARGS=(-f "docker-compose.${BROKER}.yml" -f "${FLEET_COMPOSE}")
+if [[ "${TOPOLOGY}" == "per-robot" ]]; then
+    FLEET_COMPOSE="${FLEET_DIR}/robots_${BROKER}_${N}_per-robot.yml"
+    COMPOSE_ARGS=(-f "${FLEET_COMPOSE}")
+else
+    FLEET_COMPOSE="${FLEET_DIR}/robots_${BROKER}_${N}.yml"
+    COMPOSE_ARGS=(-f "docker-compose.${BROKER}.yml" -f "${FLEET_COMPOSE}")
+fi
 
 stop_fleet() {
     echo "[fleet] tearing down..."
@@ -44,14 +51,23 @@ stop_fleet() {
             docker compose "${COMPOSE_ARGS[@]}" down -v --remove-orphans 2>&1 | tail -3 || true
         rm -f "${FLEET_COMPOSE}"
     else
-        # Fallback: tear down by project name (broker + any orphaned containers).
-        docker compose -f "docker-compose.${BROKER}.yml" down -v --remove-orphans 2>&1 | tail -3 || true
+        if [[ "${TOPOLOGY}" == "per-robot" ]]; then
+            docker compose -p "ros2-robot-fleet-demo" down -v --remove-orphans 2>&1 | tail -3 || true
+        else
+            # Fallback: tear down by project name (broker + any orphaned containers).
+            docker compose -f "docker-compose.${BROKER}.yml" down -v --remove-orphans 2>&1 | tail -3 || true
+        fi
     fi
 }
 
 if [[ "${1:-}" == "--stop" ]]; then
     stop_fleet
     exit 0
+fi
+
+if [[ "${TOPOLOGY}" == "per-robot" && "${BROKER}" != "mqtt" ]]; then
+    echo "ERROR: TOPOLOGY=per-robot is only supported with BROKER=mqtt" >&2
+    exit 1
 fi
 
 : "${BAG_PATH:?BAG_PATH env var is required (path to ROS 2 bag directory)}"
@@ -63,19 +79,27 @@ export BAG_PATH MSG_TYPE RATE_HZ
 
 echo "============================================="
 echo "  ROS 2 Robot Fleet"
-echo "  Robots : ${N}"
-echo "  Broker : ${BROKER}"
-echo "  Topics : ${MSG_TYPE}"
-echo "  Bag    : ${BAG_PATH}"
+echo "  Robots   : ${N}"
+echo "  Broker   : ${BROKER}"
+echo "  Topology : ${TOPOLOGY}"
+echo "  Topics   : ${MSG_TYPE}"
+echo "  Bag      : ${BAG_PATH}"
 echo "============================================="
 
 # 1. Generate per-robot compose fragment.
-BROKER="${BROKER}" MSG_TYPE="${MSG_TYPE}" RATE_HZ="${RATE_HZ}" \
+BROKER="${BROKER}" MSG_TYPE="${MSG_TYPE}" RATE_HZ="${RATE_HZ}" TOPOLOGY="${TOPOLOGY}" \
     "${SCRIPT_DIR}/gen_fleet.sh" "${N}" "${FLEET_COMPOSE}"
 
-# 2. Start broker.
-echo "[fleet] starting ${BROKER} broker..."
-NUM_ROBOTS="${N}" docker compose "${COMPOSE_ARGS[@]}" up -d broker
+# 2. Start broker(s).
+if [[ "${TOPOLOGY}" == "per-robot" ]]; then
+    echo "[fleet] starting ${N} per-robot brokers..."
+    broker_services=()
+    for ((i=1; i<=N; i++)); do broker_services+=("broker_${i}"); done
+    docker compose "${COMPOSE_ARGS[@]}" up -d "${broker_services[@]}"
+else
+    echo "[fleet] starting ${BROKER} broker..."
+    docker compose "${COMPOSE_ARGS[@]}" up -d broker
+fi
 sleep 6
 
 # 3. Start robots in batches to avoid DDS multicast burst on host network.
@@ -110,14 +134,24 @@ case "${BROKER}" in
         echo "    docker run --rm --network host ros2-fleet-consumer --broker kafka"
         ;;
     mqtt)
-        echo "  Broker    : localhost:1883"
-        echo "  Topics    : ros2/robot_<id>/gnss | /odom | /scan | /points"
-        echo ""
-        echo "  Quick check:"
-        echo "    mosquitto_sub -h localhost -p 1883 -t 'ros2/#' -v"
-        echo ""
-        echo "  Consumer:"
-        echo "    docker run --rm --network host ros2-fleet-consumer --broker mqtt"
+        if [[ "${TOPOLOGY}" == "per-robot" ]]; then
+            echo "  Brokers   : localhost:1883 … localhost:$((1882 + N)) (one per robot)"
+            echo "  Topics    : ros2/robot_<id>/gnss | /odom | /scan | /points"
+            echo ""
+            echo "  Quick check (robot 1):"
+            echo "    mosquitto_sub -h localhost -p 1883 -t 'ros2/#' -v"
+            echo "  Quick check (robot 2):"
+            echo "    mosquitto_sub -h localhost -p 1884 -t 'ros2/#' -v"
+        else
+            echo "  Broker    : localhost:1883"
+            echo "  Topics    : ros2/robot_<id>/gnss | /odom | /scan | /points"
+            echo ""
+            echo "  Quick check:"
+            echo "    mosquitto_sub -h localhost -p 1883 -t 'ros2/#' -v"
+            echo ""
+            echo "  Consumer:"
+            echo "    docker run --rm --network host ros2-fleet-consumer --broker mqtt"
+        fi
         ;;
 esac
 echo ""
