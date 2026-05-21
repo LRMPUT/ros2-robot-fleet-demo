@@ -22,6 +22,17 @@ else
     PAYLOAD_FORMAT="${PAYLOAD_FORMAT:-json}"
 fi
 
+TOPOLOGY="${TOPOLOGY:-shared}"
+
+if [[ "${TOPOLOGY}" == "per-robot" && "${BROKER}" != "mqtt" ]]; then
+    echo "ERROR: TOPOLOGY=per-robot is only supported with BROKER=mqtt" >&2
+    exit 1
+fi
+if [[ "${TOPOLOGY}" != "shared" && "${TOPOLOGY}" != "per-robot" ]]; then
+    echo "ERROR: unknown TOPOLOGY=${TOPOLOGY}; expected 'shared' or 'per-robot'" >&2
+    exit 1
+fi
+
 IMAGE="ghcr.io/lrmput/ros2-kafka-dispatcher:latest"
 
 cat > "${OUT}" <<'HEADER'
@@ -30,7 +41,43 @@ services:
 HEADER
 
 for ((i = 1; i <= N; i++)); do
-    cat >> "${OUT}" <<EOF
+    if [[ "${TOPOLOGY}" == "per-robot" ]]; then
+        PORT=$((1882 + i))
+        cat >> "${OUT}" <<EOF
+  broker_${i}:
+    image: eclipse-mosquitto:2.0
+    network_mode: host
+    ports:
+      - "${PORT}:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+EOF
+        cat >> "${OUT}" <<EOF
+  robot_${i}:
+    image: ${IMAGE}
+    network_mode: host
+    ipc: host
+    environment:
+      ROBOT_ID: "${i}"
+      BAG_PATH: "/data/bag"
+      RATE_HZ: "${RATE_HZ}"
+      MSG_TYPE: "${MSG_TYPE}"
+      SINK_KIND: "mqtt"
+      BROKER_HOST: "localhost"
+      BROKER_PORT: "${PORT}"
+      MQTT_QOS: "1"
+      PAYLOAD_FORMAT: "${PAYLOAD_FORMAT}"
+    volumes:
+      - "\${BAG_PATH:?BAG_PATH is required}:/data/bag:ro"
+      - ./edge_entrypoint.sh:/usr/local/bin/edge_entrypoint.sh:ro
+      - ./robot_replay.py:/app/robot_replay.py:ro
+    entrypoint: ["/usr/local/bin/edge_entrypoint.sh"]
+    depends_on:
+      - broker_${i}
+    restart: "no"
+EOF
+    else
+        cat >> "${OUT}" <<EOF
   robot_${i}:
     image: ${IMAGE}
     network_mode: host
@@ -42,6 +89,7 @@ for ((i = 1; i <= N; i++)); do
       MSG_TYPE: "${MSG_TYPE}"
       SINK_KIND: "${BROKER}"
       BROKER_HOST: "localhost"
+      BROKER_PORT: "1883"
       MQTT_QOS: "1"
       PAYLOAD_FORMAT: "${PAYLOAD_FORMAT}"
     volumes:
@@ -53,6 +101,7 @@ for ((i = 1; i <= N; i++)); do
       - broker
     restart: "no"
 EOF
+    fi
 done
 
-echo "[gen_fleet] wrote ${N} robot services (broker=${BROKER}, msg_type=${MSG_TYPE}, payload=${PAYLOAD_FORMAT}) → ${OUT}"
+echo "[gen_fleet] wrote ${N} robot services (broker=${BROKER}, topology=${TOPOLOGY}, msg_type=${MSG_TYPE}, payload=${PAYLOAD_FORMAT}) → ${OUT}"
