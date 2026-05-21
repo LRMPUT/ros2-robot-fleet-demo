@@ -56,8 +56,31 @@ N=5 BROKER=mqtt BAG_PATH=/tmp/my_bag_ros2 ./run.sh
 | `scan`   | `sensor_msgs/msg/LaserScan`      | 50 Hz   |
 | `points` | `sensor_msgs/msg/PointCloud2`    | 12.5 Hz |
 
-Payloads are **CDR-serialized** ROS 2 messages. The `header.stamp` field
-carries the publish wall-clock time (`t0_ns = sec×10⁹ + nanosec`).
+Payloads are **CDR-serialized** by default for MQTT and **JSON-serialized**
+by default for Kafka. The `header.stamp` field carries the publish wall-clock
+time (`t0_ns = sec×10⁹ + nanosec`).
+
+## Payload format
+
+The serialization format is controlled by the `PAYLOAD_FORMAT` environment variable:
+
+| Value | Description |
+|-------|-------------|
+| `cdr` | Binary CDR (default for MQTT) |
+| `json` | JSON (default for Kafka) |
+
+```bash
+# MQTT with JSON payloads
+PAYLOAD_FORMAT=json N=5 BROKER=mqtt BAG_PATH=/path/to/bag ./run.sh
+
+# Kafka with CDR payloads
+PAYLOAD_FORMAT=cdr N=10 BROKER=kafka BAG_PATH=/path/to/bag ./run.sh
+```
+
+JSON payloads use field names from the ROS 2 message definition and support
+all four message types (`NavSatFix`, `Odometry`, `LaserScan`, `PointCloud2`).
+Infinite/NaN float values (e.g. out-of-range laser returns) are serialized as
+`null`.
 
 ## Demo consumer
 
