@@ -61,10 +61,13 @@ Add `BROKER_PORT` parameter (currently hardcoded to `1883`):
 : "${BROKER_PORT:=1883}"
 ```
 
-Pass it to the mosquitto_sink params:
+Pass it to the mosquitto_sink params, and add `mqtt.message_key` so Nebula
+can identify the source robot via `header.frame_id` (mirrors the existing
+`kafka.message_key` already set for Kafka):
 
 ```yaml
 mqtt.broker_port: ${BROKER_PORT}
+mqtt.message_key: "robot_${ROBOT_ID}"
 ```
 
 ### `gen_fleet.sh`
