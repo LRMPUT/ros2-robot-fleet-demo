@@ -38,6 +38,9 @@ N=10 BROKER=kafka BAG_PATH=/tmp/my_bag_ros2 ./run.sh
 # 5 robots → MQTT
 N=5 BROKER=mqtt BAG_PATH=/tmp/my_bag_ros2 ./run.sh
 
+# 5 robots, each with its own Mosquitto broker (edge simulation)
+TOPOLOGY=per-robot N=5 BROKER=mqtt BAG_PATH=/tmp/my_bag_ros2 ./run.sh
+
 # Stop the fleet
 ./run.sh --stop
 ```
@@ -81,6 +84,29 @@ JSON payloads use field names from the ROS 2 message definition and support
 all four message types (`NavSatFix`, `Odometry`, `LaserScan`, `PointCloud2`).
 Infinite/NaN float values (e.g. out-of-range laser returns) are serialized as
 `null`.
+
+## Topology
+
+The `TOPOLOGY` environment variable selects how brokers are allocated:
+
+| Value | Description |
+|-------|-------------|
+| `shared` (default) | All robots write to one broker |
+| `per-robot` | Each robot gets its own broker (MQTT only) |
+
+```bash
+# Shared broker (default)
+N=10 BROKER=mqtt BAG_PATH=/path/to/bag ./run.sh
+
+# Per-robot brokers: robot 1 → :1883, robot 2 → :1884, …
+TOPOLOGY=per-robot N=5 BROKER=mqtt BAG_PATH=/path/to/bag ./run.sh
+
+# Stop
+TOPOLOGY=per-robot N=5 BROKER=mqtt ./run.sh --stop
+```
+
+In `per-robot` mode each robot's `header.frame_id` is set to `robot_<id>`
+so consumers can identify the source robot per message.
 
 ## Demo consumer
 
