@@ -90,7 +90,7 @@ ${NODE_NAME}:
     subscriptions_yaml: |
 $(printf '%s\n' "${SUBS_YAML}" | sed 's/^/      /')
     mqtt.broker_host: "${BROKER_HOST}"
-    mqtt.broker_port: "${BROKER_PORT}"
+    mqtt.broker_port: ${BROKER_PORT}
     mqtt.client_id: "mosquitto_sink_${ROBOT_ID}"
     mqtt.topic_prefix: ros2
     mqtt.qos: ${MQTT_QOS}
