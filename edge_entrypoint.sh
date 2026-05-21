@@ -13,6 +13,7 @@ set -euo pipefail
 : "${MSG_TYPE:=multi}"
 : "${RATE_HZ:=10}"
 : "${MQTT_QOS:=1}"               # 0 = fire-and-forget, 1 = at-least-once
+: "${BROKER_PORT:=1883}"
 # JSON default for Kafka; CDR default for MQTT (mosquitto_sink JSON path has
 # introspection issues with nested message types such as NavSatFix).
 if [[ "${SINK_KIND}" == "mqtt" ]]; then
@@ -89,11 +90,12 @@ ${NODE_NAME}:
     subscriptions_yaml: |
 $(printf '%s\n' "${SUBS_YAML}" | sed 's/^/      /')
     mqtt.broker_host: "${BROKER_HOST}"
-    mqtt.broker_port: 1883
+    mqtt.broker_port: ${BROKER_PORT}
     mqtt.client_id: "mosquitto_sink_${ROBOT_ID}"
     mqtt.topic_prefix: ros2
     mqtt.qos: ${MQTT_QOS}
     mqtt.payload_format: "${PAYLOAD_FORMAT}"
+    mqtt.message_key: "robot_${ROBOT_ID}"
     metrics.enabled: false
 EOF
         ;;
