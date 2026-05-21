@@ -32,11 +32,6 @@ MSG_TYPE="${MSG_TYPE:-multi}"
 RATE_HZ="${RATE_HZ:-10}"
 TOPOLOGY="${TOPOLOGY:-shared}"
 
-if [[ "${TOPOLOGY}" == "per-robot" && "${BROKER}" != "mqtt" ]]; then
-    echo "ERROR: TOPOLOGY=per-robot is only supported with BROKER=mqtt" >&2
-    exit 1
-fi
-
 # Store fleet compose files persistently so --stop always finds them.
 FLEET_DIR="${SCRIPT_DIR}/.fleet"
 mkdir -p "${FLEET_DIR}"
@@ -68,6 +63,11 @@ stop_fleet() {
 if [[ "${1:-}" == "--stop" ]]; then
     stop_fleet
     exit 0
+fi
+
+if [[ "${TOPOLOGY}" == "per-robot" && "${BROKER}" != "mqtt" ]]; then
+    echo "ERROR: TOPOLOGY=per-robot is only supported with BROKER=mqtt" >&2
+    exit 1
 fi
 
 : "${BAG_PATH:?BAG_PATH env var is required (path to ROS 2 bag directory)}"
