@@ -45,11 +45,14 @@ TYPE_CONFIG = {
 MULTI_TYPES = ("navsatfix", "odometry", "laserscan", "pointcloud2")
 
 
-def shift_navsatfix(msg: NavSatFix, robot_id: int) -> None:
+def shift_navsatfix(msg: NavSatFix, robot_id) -> None:
     """Apply a deterministic per-robot offset to lat/lon. In-place."""
-    msg.latitude  += (robot_id - FLEET_CENTER_ID) * LAT_OFFSET_DEG_PER_ID
-    msg.longitude += (robot_id - FLEET_CENTER_ID) * LON_OFFSET_DEG_PER_ID
+    import re
+    match = re.search(r'\d+', str(robot_id))
+    numeric_id = int(match.group()) if match else 1
 
+    msg.latitude  += (numeric_id - FLEET_CENTER_ID) * LAT_OFFSET_DEG_PER_ID
+    msg.longitude += (numeric_id - FLEET_CENTER_ID) * LON_OFFSET_DEG_PER_ID
 
 def shift_message(msg, robot_id: int, msg_type: str) -> None:
     """Apply per-robot offset where meaningful for the chosen type."""
@@ -191,8 +194,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--robot-id",
-        type=int,
-        default=int(os.environ.get("ROBOT_ID", "-1")),
+        type=str,
+        default=os.environ.get("ROBOT_ID", "-1"),
         help="Single-robot mode: this container's robot_id. If <0, falls back to hostname or NUM_ROBOTS fleet mode.",
     )
     parser.add_argument(
@@ -209,7 +212,8 @@ def main() -> None:
     parser.add_argument(
         "--rate-hz",
         type=float,
-        default=float(os.environ.get("RATE_HZ", "10")),
+        default=float(os.environ.get("RATE_HZ", "10.0")),
+        help="Replay rate in Hz (only used in single-topic mode)",
     )
     parser.add_argument(
         "--msg-type",
@@ -225,7 +229,6 @@ def main() -> None:
         raise SystemExit("BAG_PATH (env or --bag-path) is required")
 
     multi = (args.msg_type == "multi")
-
     rclpy.init()
     nodes = []
     try:
@@ -235,22 +238,22 @@ def main() -> None:
             # Multi-topic robots have 4 timers each, so more threads help.
             nthreads = min(max(args.num_robots, 4) * (4 if multi else 1), 32)
             executor = MultiThreadedExecutor(num_threads=nthreads)
-            for robot_id in range(1, args.num_robots + 1):
+            for r_id in range(1, args.num_robots + 1):
                 if multi:
-                    node = MultiTopicRobotReplay(robot_id, args.bag_path)
+                    node = MultiTopicRobotReplay(str(r_id), args.bag_path)
                 else:
-                    node = RobotReplay(robot_id, args.bag_path, args.rate_hz, args.msg_type)
+                    node = RobotReplay(str(r_id), args.bag_path, args.rate_hz, args.msg_type)
                 nodes.append(node)
                 executor.add_node(node)
             print(f"[robot_replay] Fleet mode: {args.num_robots} robots "
                   f"type={args.msg_type} threads={nthreads}", flush=True)
             executor.spin()
         else:
-            robot_id = args.robot_id if args.robot_id >= 0 else derive_robot_id_from_hostname()
+            robot_id = args.robot_id if args.robot_id != "-1" else derive_robot_id_from_hostname()
             if multi:
-                node = MultiTopicRobotReplay(robot_id, args.bag_path)
+                node = MultiTopicRobotReplay(str(robot_id), args.bag_path)
             else:
-                node = RobotReplay(robot_id, args.bag_path, args.rate_hz, args.msg_type)
+                node = RobotReplay(str(robot_id), args.bag_path, args.rate_hz, args.msg_type)
             nodes.append(node)
             # Use a multi-threaded executor for the multi-topic case so the
             # 4 timers can fire on separate threads.
@@ -265,7 +268,6 @@ def main() -> None:
         for node in nodes:
             node.destroy_node()
         rclpy.shutdown()
-
 
 if __name__ == "__main__":
     main()

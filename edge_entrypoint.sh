@@ -43,7 +43,9 @@ fi
 # Isolate each robot's DDS traffic in its own domain so the lifecycle
 # discovery doesn't compete across containers on the shared host network.
 # Domain IDs 0–101 are valid; robot IDs above 101 wrap around.
-export ROS_DOMAIN_ID=$(( (ROBOT_ID - 1) % 101 + 1 ))
+#export ROS_DOMAIN_ID=$(( (ROBOT_ID - 1) % 101 + 1 ))
+NUMERIC_ID="${ROBOT_ID%%_*}"
+export ROS_DOMAIN_ID=$(( (NUMERIC_ID - 1) % 101 + 1 ))
 
 # ROS setup scripts reference unset variables; relax set -u for the source step.
 set +u
@@ -143,14 +145,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# 2. Wait for the sink lifecycle service, then configure + activate.
-echo "[edge] waiting for /${NODE_NAME} lifecycle..."
-if ! timeout 60 bash -c "until ros2 lifecycle get /${NODE_NAME} >/dev/null 2>&1; do sleep 1; done"; then
-    echo "[edge] ERROR: /${NODE_NAME} lifecycle never appeared" >&2
-    exit 1
-fi
-ros2 lifecycle set "/${NODE_NAME}" configure
-ros2 lifecycle set "/${NODE_NAME}" activate
+# 2. Wait for the sink lifecycle service, then configure + activate with retries.
+echo "[edge] waiting for /${NODE_NAME} lifecycle to stabilize..."
+for i in {1..15}; do
+    if ros2 lifecycle set "${NODE_NAME}" configure >/dev/null 2>&1; then
+        echo "[edge] /${NODE_NAME} configured successfully."
+        break
+    fi
+    echo "    [edge] Node discovery lagging under high CPU load, retrying in 1s... ($i/15)"
+    sleep 1
+done
+
+ros2 lifecycle set "${NODE_NAME}" activate
 echo "[edge] /${NODE_NAME} ACTIVE."
 
 # 3. Run the publisher in the foreground. When it exits, cleanup() kills the sink.
