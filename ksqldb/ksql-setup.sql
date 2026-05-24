@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS robot_registry (
 ) WITH (
   KAFKA_TOPIC  = 'robot_registration',
   VALUE_FORMAT = 'JSON',
-  PARTITIONS   = 4
+  PARTITIONS   = 50
 );
 
 CREATE TABLE IF NOT EXISTS sensor_registry (
@@ -34,7 +34,6 @@ CREATE TABLE IF NOT EXISTS sensor_registry (
 --   kafka_name: fleet.gnss  → topic prefix ros2  → ros2.fleet.gnss
 --   kafka_key:  robot_<id>  → Kafka message key
 --   payload_format: json    → VALUE_FORMAT = JSON below
-
 CREATE STREAM IF NOT EXISTS fleet_gnss_raw (
   robot_id   VARCHAR KEY,
   header     STRUCT<
@@ -50,20 +49,33 @@ CREATE STREAM IF NOT EXISTS fleet_gnss_raw (
 ) WITH (
   KAFKA_TOPIC  = 'ros2.fleet.gnss',
   VALUE_FORMAT = 'JSON',
-  PARTITIONS   = 4
+  PARTITIONS   = 50
 );
 
--- Flat stream: extract the fields most useful for geofencing / collision
--- detection and stamp a wall-clock timestamp for ksqlDB windowing.
-CREATE STREAM IF NOT EXISTS fleet_gnss AS
-  SELECT
-    robot_id,
-    ROWTIME                       AS event_ms,
-    header->stamp->sec * 1000
-      + header->stamp->nanosec / 1000000  AS t0_ms,
-    latitude,
-    longitude,
-    altitude,
-    status->status                AS gps_status
-  FROM fleet_gnss_raw
-  EMIT CHANGES;
+-- ── Robot gps stream ──────────────────────────────────────────────────────
+CREATE STREAM IF NOT EXISTS ROS_GPS_FIX_STREAM WITH (
+  KAFKA_TOPIC  = 'ROS_GPS_FIX_STREAM',
+  VALUE_FORMAT = 'JSON',
+  PARTITIONS   = 50
+) AS SELECT
+  robot_id,
+  ROWTIME                       AS event_ms,
+  latitude,
+  longitude,
+  altitude,
+  status->status                AS gps_status,
+  (header->stamp->sec * 1000) 
+    + (header->stamp->nanosec / 1000000) AS timestamp
+FROM fleet_gnss_raw
+EMIT CHANGES;
+
+-- translation for GIS4Io4T-kafka compatibility
+--CREATE STREAM IF NOT EXISTS ROS_GPS_FIX_STREAM AS
+--  SELECT
+--    robot_id,
+--    latitude,
+--    longitude,
+--    altitude,
+--    t0_ms AS timestamp
+--  FROM fleet_gnss
+--  EMIT CHANGES;
