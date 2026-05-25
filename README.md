@@ -108,6 +108,27 @@ TOPOLOGY=per-robot N=5 BROKER=mqtt ./run.sh --stop
 In `per-robot` mode each robot's `header.frame_id` is set to `robot_<id>`
 so consumers can identify the source robot per message.
 
+## Manual 3-stage startup
+
+Use `--stage` when you need a downstream consumer (Nebula, ksqlDB, custom)
+to be running *before* robots start publishing — otherwise the consumer
+may miss the first messages.
+
+```bash
+# 1. Brokers only (BAG_PATH not required at this stage)
+N=5 BROKER=mqtt TOPOLOGY=per-robot ./run.sh --stage brokers
+
+# 2. Start your downstream consumer here (subscribe to the brokers)
+
+# 3. Robots (dispatcher + ROS publisher in each container)
+N=5 BROKER=mqtt TOPOLOGY=per-robot BAG_PATH=/path/to/bag ./run.sh --stage robots
+
+# Tear down
+N=5 BROKER=mqtt TOPOLOGY=per-robot ./run.sh --stop
+```
+
+The default `./run.sh` (no `--stage`) runs both stages back-to-back, same as before.
+
 ## Demo consumer
 
 **Option A — Docker (no local ROS 2 needed):**

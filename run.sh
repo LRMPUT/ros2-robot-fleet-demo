@@ -7,7 +7,7 @@
 #   LaserScan  @ 50 Hz  → ros2.robot_<id>.scan
 #   PointCloud2@ 12.5Hz → ros2.robot_<id>.points
 #
-# Required env:
+# Required env (for robots stage):
 #   BAG_PATH   — path to a converted ROS 2 bag directory (must contain metadata.yaml)
 #
 # Optional env:
@@ -20,7 +20,12 @@
 # Usage:
 #   N=10 BROKER=kafka BAG_PATH=/path/to/bag ./run.sh
 #   N=5  BROKER=mqtt  BAG_PATH=/path/to/bag ./run.sh
-#   ./run.sh --stop           # tear down all fleets (no args needed)
+#   ./run.sh --stop                  # tear down all fleets
+#
+# Manual 3-stage startup (e.g. to start downstream consumers between brokers and robots):
+#   N=5 BROKER=mqtt                              ./run.sh --stage brokers
+#   # ... start your downstream consumer (nebula etc.) ...
+#   N=5 BROKER=mqtt BAG_PATH=/path/to/bag         ./run.sh --stage robots
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -65,17 +70,34 @@ if [[ "${1:-}" == "--stop" ]]; then
     exit 0
 fi
 
+# Parse --stage flag (default: all = brokers + robots in one go)
+STAGE="all"
+if [[ "${1:-}" == "--stage" ]]; then
+    STAGE="${2:?--stage requires a value: brokers, robots, or all}"
+    case "${STAGE}" in
+        brokers|robots|all) ;;
+        *) echo "ERROR: unknown --stage value '${STAGE}'; expected brokers|robots|all" >&2; exit 1 ;;
+    esac
+fi
+
 if [[ "${TOPOLOGY}" == "per-robot" && "${BROKER}" != "mqtt" ]]; then
     echo "ERROR: TOPOLOGY=per-robot is only supported with BROKER=mqtt" >&2
     exit 1
 fi
 
-: "${BAG_PATH:?BAG_PATH env var is required (path to ROS 2 bag directory)}"
-if [[ ! -f "${BAG_PATH}/metadata.yaml" ]]; then
-    echo "ERROR: ${BAG_PATH}/metadata.yaml not found — BAG_PATH must point to a ROS 2 bag directory." >&2
-    exit 2
+# BAG_PATH is only required when we'll actually start robot containers.
+# For --stage brokers, set a placeholder so Docker Compose can still parse the file.
+if [[ "${STAGE}" == "brokers" ]]; then
+    export BAG_PATH="${BAG_PATH:-/dev/null}"
+else
+    : "${BAG_PATH:?BAG_PATH env var is required (path to ROS 2 bag directory)}"
+    if [[ ! -f "${BAG_PATH}/metadata.yaml" ]]; then
+        echo "ERROR: ${BAG_PATH}/metadata.yaml not found — BAG_PATH must point to a ROS 2 bag directory." >&2
+        exit 2
+    fi
+    export BAG_PATH
 fi
-export BAG_PATH MSG_TYPE RATE_HZ
+export MSG_TYPE RATE_HZ
 
 echo "============================================="
 echo "  ROS 2 Robot Fleet"
@@ -83,26 +105,58 @@ echo "  Robots   : ${N}"
 echo "  Broker   : ${BROKER}"
 echo "  Topology : ${TOPOLOGY}"
 echo "  Topics   : ${MSG_TYPE}"
-echo "  Bag      : ${BAG_PATH}"
+echo "  Stage    : ${STAGE}"
+[[ "${STAGE}" != "brokers" ]] && echo "  Bag      : ${BAG_PATH}"
 echo "============================================="
 
-# 1. Generate per-robot compose fragment.
-BROKER="${BROKER}" MSG_TYPE="${MSG_TYPE}" RATE_HZ="${RATE_HZ}" TOPOLOGY="${TOPOLOGY}" \
-    "${SCRIPT_DIR}/gen_fleet.sh" "${N}" "${FLEET_COMPOSE}"
+# === Stage: brokers (or full run) ===
+if [[ "${STAGE}" == "brokers" || "${STAGE}" == "all" ]]; then
+    # Generate compose fragment.
+    BROKER="${BROKER}" MSG_TYPE="${MSG_TYPE}" RATE_HZ="${RATE_HZ}" TOPOLOGY="${TOPOLOGY}" \
+        "${SCRIPT_DIR}/gen_fleet.sh" "${N}" "${FLEET_COMPOSE}"
 
-# 2. Start broker(s).
-if [[ "${TOPOLOGY}" == "per-robot" ]]; then
-    echo "[fleet] starting ${N} per-robot brokers..."
-    broker_services=()
-    for ((i=1; i<=N; i++)); do broker_services+=("broker_${i}"); done
-    docker compose "${COMPOSE_ARGS[@]}" up -d "${broker_services[@]}"
-else
-    echo "[fleet] starting ${BROKER} broker..."
-    docker compose "${COMPOSE_ARGS[@]}" up -d broker
+    # Start broker(s).
+    if [[ "${TOPOLOGY}" == "per-robot" ]]; then
+        echo "[fleet] starting ${N} per-robot brokers..."
+        broker_services=()
+        for ((i=1; i<=N; i++)); do broker_services+=("broker_${i}"); done
+        docker compose "${COMPOSE_ARGS[@]}" up -d "${broker_services[@]}"
+    else
+        echo "[fleet] starting ${BROKER} broker..."
+        docker compose "${COMPOSE_ARGS[@]}" up -d broker
+    fi
+    sleep 6
 fi
-sleep 6
 
-# 3. Start robots in batches to avoid DDS multicast burst on host network.
+# Stop here if user only wanted brokers.
+if [[ "${STAGE}" == "brokers" ]]; then
+    echo ""
+    echo "Brokers ready. Next:"
+    case "${BROKER}" in
+        mqtt)
+            if [[ "${TOPOLOGY}" == "per-robot" ]]; then
+                echo "  Brokers : localhost:1883 … localhost:$((1882 + N))"
+            else
+                echo "  Broker  : localhost:1883"
+            fi
+            ;;
+        kafka)
+            echo "  Bootstrap : localhost:9092"
+            ;;
+    esac
+    echo ""
+    echo "  Start downstream consumers (Nebula etc.) now."
+    echo "  Then: N=${N} BROKER=${BROKER} TOPOLOGY=${TOPOLOGY} BAG_PATH=... ./run.sh --stage robots"
+    exit 0
+fi
+
+# === Stage: robots (or full run) ===
+if [[ "${STAGE}" == "robots" && ! -f "${FLEET_COMPOSE}" ]]; then
+    echo "ERROR: ${FLEET_COMPOSE} not found — run './run.sh --stage brokers' first" >&2
+    exit 1
+fi
+
+# Start robots in batches to avoid DDS multicast burst on host network.
 echo "[fleet] starting ${N} robots..."
 BATCH=5
 for ((i=1; i<=N; i+=BATCH)); do
