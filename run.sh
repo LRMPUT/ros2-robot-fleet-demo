@@ -31,6 +31,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
+# Load .env if present; shell-set vars always take precedence.
+if [[ -f "${SCRIPT_DIR}/.env" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+        key="${line%%=*}"
+        [[ -v "$key" ]] && continue
+        export "$line"
+    done < "${SCRIPT_DIR}/.env"
+fi
+
 N="${N:-10}"
 BROKER="${BROKER:-kafka}"
 MSG_TYPE="${MSG_TYPE:-multi}"
@@ -66,6 +77,7 @@ stop_fleet() {
 }
 
 if [[ "${1:-}" == "--stop" ]]; then
+    echo "  Robots   : ${N}"
     stop_fleet
     exit 0
 fi
