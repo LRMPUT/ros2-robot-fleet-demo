@@ -26,6 +26,10 @@
 #   N=5 BROKER=mqtt                              ./run.sh --stage brokers
 #   # ... start your downstream consumer (nebula etc.) ...
 #   N=5 BROKER=mqtt BAG_PATH=/path/to/bag         ./run.sh --stage robots
+#
+# Spot-check live data (prints one decoded message every 10 s):
+#   BROKER=mqtt ./run.sh --echo
+#   BROKER=kafka PAYLOAD_FORMAT=json ./run.sh --echo
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -80,6 +84,20 @@ stop_fleet() {
 
 if [[ "${1:-}" == "--stop" ]]; then
     stop_fleet
+    exit 0
+fi
+
+if [[ "${1:-}" == "--echo" ]]; then
+    _broker="${BROKER:-mqtt}"
+    _fmt="${PAYLOAD_FORMAT:-auto}"
+    echo "[echo] broker=${_broker} format=${_fmt} — one message every 10s (Ctrl+C to stop)"
+    while true; do
+        printf "\n--- $(date '+%H:%M:%S') ---\n"
+        timeout 8 docker run --rm --network host ros2-fleet-consumer \
+            --broker "${_broker}" --format "${_fmt}" 2>/dev/null \
+            | grep -m1 '^\[robot_' || true
+        sleep 10
+    done
     exit 0
 fi
 
