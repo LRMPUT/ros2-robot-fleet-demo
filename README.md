@@ -41,6 +41,9 @@ N=5 BROKER=mqtt BAG_PATH=/tmp/my_bag_ros2 ./run.sh
 # 5 robots, each with its own Mosquitto broker (edge simulation)
 TOPOLOGY=per-robot N=5 BROKER=mqtt BAG_PATH=/tmp/my_bag_ros2 ./run.sh
 
+# Start fleet and sample one decoded message every 10 s (Ctrl+C to stop)
+N=3 BROKER=mqtt PAYLOAD_FORMAT=json BAG_PATH=/tmp/my_bag_ros2 ./run.sh --echo
+
 # Stop the fleet
 ./run.sh --stop
 ```
@@ -128,6 +131,30 @@ N=5 BROKER=mqtt TOPOLOGY=per-robot ./run.sh --stop
 ```
 
 The default `./run.sh` (no `--stage`) runs both stages back-to-back, same as before.
+
+## Live message echo
+
+Add `--echo` to start the fleet and immediately begin printing one decoded message
+every 10 seconds — useful for a quick sanity-check without a separate terminal:
+
+```bash
+N=3 BROKER=mqtt PAYLOAD_FORMAT=json BAG_PATH=/path/to/bag ./run.sh --echo
+```
+
+Output after fleet startup:
+
+```
+[echo] Sampling live messages every 10s ... (Ctrl+C to stop)
+
+--- 16:08:13 ---
+[robot_  3]  scan        1.4 ms     9.7 KB  ← ros2/robot_3/scan
+
+--- 16:08:24 ---
+[robot_  1]  odom        1.1 ms     1.0 KB  ← ros2/robot_1/odom
+```
+
+Each line shows: robot ID, topic type, end-to-end latency, payload size, and full topic path.
+Ctrl+C stops the echo loop **and** keeps the fleet running. Use `./run.sh --stop` to tear down.
 
 ## Demo consumer
 
