@@ -34,9 +34,11 @@ cd "${SCRIPT_DIR}"
 # Load .env if present; shell-set vars always take precedence.
 if [[ -f "${SCRIPT_DIR}/.env" ]]; then
     while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line#"${line%%[^[:space:]]*}"}"   # strip leading whitespace
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
         [[ "$line" =~ ^[[:space:]]*$ ]] && continue
         key="${line%%=*}"
+        [[ "$key" =~ [[:space:]] ]] && continue   # skip malformed KEY = value lines
         [[ -v "$key" ]] && continue
         export "$line"
     done < "${SCRIPT_DIR}/.env"
