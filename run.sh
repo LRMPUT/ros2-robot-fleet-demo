@@ -27,9 +27,8 @@
 #   # ... start your downstream consumer (nebula etc.) ...
 #   N=5 BROKER=mqtt BAG_PATH=/path/to/bag         ./run.sh --stage robots
 #
-# Spot-check live data (prints one decoded message every 10 s):
-#   BROKER=mqtt ./run.sh --echo
-#   BROKER=kafka PAYLOAD_FORMAT=json ./run.sh --echo
+# Start fleet and sample one message every 10s:
+#   N=3 BROKER=mqtt PAYLOAD_FORMAT=json BAG_PATH=/path/to/bag ./run.sh --echo
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -82,34 +81,33 @@ stop_fleet() {
     fi
 }
 
-if [[ "${1:-}" == "--stop" ]]; then
-    stop_fleet
-    exit 0
-fi
-
-if [[ "${1:-}" == "--echo" ]]; then
-    _broker="${BROKER:-mqtt}"
-    _fmt="${PAYLOAD_FORMAT:-auto}"
-    echo "[echo] broker=${_broker} format=${_fmt} — one message every 10s (Ctrl+C to stop)"
-    while true; do
-        printf "\n--- $(date '+%H:%M:%S') ---\n"
-        timeout 8 docker run --rm --network host ros2-fleet-consumer \
-            --broker "${_broker}" --format "${_fmt}" 2>/dev/null \
-            | grep -m1 '^\[robot_' || true
-        sleep 10
-    done
-    exit 0
-fi
-
-# Parse --stage flag (default: all = brokers + robots in one go)
 STAGE="all"
-if [[ "${1:-}" == "--stage" ]]; then
-    STAGE="${2:?--stage requires a value: brokers, robots, or all}"
-    case "${STAGE}" in
-        brokers|robots|all) ;;
-        *) echo "ERROR: unknown --stage value '${STAGE}'; expected brokers|robots|all" >&2; exit 1 ;;
+ECHO=false
+
+while [[ $# -gt 0 ]]; do
+    case "${1}" in
+        --stop)
+            stop_fleet
+            exit 0
+            ;;
+        --stage)
+            STAGE="${2:?--stage requires a value: brokers, robots, or all}"
+            case "${STAGE}" in
+                brokers|robots|all) ;;
+                *) echo "ERROR: unknown --stage value '${STAGE}'; expected brokers|robots|all" >&2; exit 1 ;;
+            esac
+            shift 2
+            ;;
+        --echo)
+            ECHO=true
+            shift
+            ;;
+        *)
+            echo "ERROR: unknown argument '${1}'" >&2
+            exit 1
+            ;;
     esac
-fi
+done
 
 if [[ "${TOPOLOGY}" == "per-robot" && "${BROKER}" != "mqtt" ]]; then
     echo "ERROR: TOPOLOGY=per-robot is only supported with BROKER=mqtt" >&2
@@ -241,3 +239,16 @@ case "${BROKER}" in
 esac
 echo ""
 echo "  To stop: ./run.sh --stop"
+
+if [[ "${ECHO}" == "true" ]]; then
+    _fmt="${PAYLOAD_FORMAT:-auto}"
+    echo ""
+    echo "[echo] Sampling live messages every 10s ... (Ctrl+C to stop)"
+    while true; do
+        printf "\n--- $(date '+%H:%M:%S') ---\n"
+        timeout 8 docker run --rm --network host ros2-fleet-consumer \
+            --broker "${BROKER}" --format "${_fmt}" 2>/dev/null \
+            | grep -m1 '^\[robot_' || true
+        sleep 10
+    done
+fi
