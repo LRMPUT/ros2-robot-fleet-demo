@@ -68,6 +68,7 @@ PAYLOAD_FORMAT=json
 | Per-robot "silence" alert | Per-robot silence detection (§2b) |
 | MQTT broker health check | Docker healthcheck (§2a) |
 | Consumer-side "no messages received" timeout | Consumer no-data alert (§2c) |
+| Empty bag (topic exists but zero messages) | BagLooper empty-bag check (§2e) |
 
 ### 2a. MQTT Broker Healthcheck
 
@@ -136,6 +137,30 @@ This catches two scenarios: broker down before consumer starts, and fleet never 
 --silence-threshold SECONDS   seconds of silence before a robot is flagged (default: 10)
 ```
 
+### 2e. Empty Bag Check in `BagLooper`
+
+**File:** `robot_replay.py`
+
+Currently `BagLooper` raises `RuntimeError` when a topic type is absent entirely. But if the topic exists with zero messages, `has_next()` returns `False` immediately after open, leading to `read_next()` on an empty reader — a cryptic internal exception.
+
+Fix in `BagLooper.__next__`: after reopening on EOF, check `has_next()` again and raise a clear error if the bag is still empty:
+
+```python
+def __next__(self):
+    if self._reader is None:
+        raise RuntimeError("BagLooper is permanently broken after failed re-open")
+    if not self._reader.has_next():
+        self._open_reader()
+        if not self._reader.has_next():
+            raise RuntimeError(
+                f"Bag {self._bag_path} contains no messages of type {self._topic_type_str}"
+            )
+    _topic, data, _t = self._reader.read_next()
+    return deserialize_message(data, self._msg_class)
+```
+
+The container exits with a non-zero code, Docker marks it unhealthy, and the error message clearly identifies the bag and type.
+
 ---
 
 ## Files Changed
@@ -147,6 +172,7 @@ This catches two scenarios: broker down before consumer starts, and fleet never 
 | `.gitignore` | Add `.env` |
 | `docker-compose.mqtt.yml` | Add broker healthcheck |
 | `consumer/consume.py` | Add `_last_seen`, silence detection, no-data alert, `--silence-threshold` |
+| `robot_replay.py` | Empty-bag check in `BagLooper.__next__` |
 
 ---
 
