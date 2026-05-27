@@ -115,6 +115,11 @@ class BagLooper:
             raise RuntimeError("BagLooper is permanently broken after failed re-open")
         if not self._reader.has_next():
             self._open_reader()
+            if not self._reader.has_next():
+                raise RuntimeError(
+                    f"Bag {self._bag_path} contains no messages of type "
+                    f"{self._topic_type_str}"
+                )
         _topic, data, _t = self._reader.read_next()
         return deserialize_message(data, self._msg_class)
 
