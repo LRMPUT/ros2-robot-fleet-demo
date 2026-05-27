@@ -36,7 +36,7 @@ _total_bytes = 0
 _last_seen: dict[int, float] = {}
 _warned_silent: set[int] = set()
 _start_time: float = time.monotonic()
-_warned_no_data: bool = False
+_warned_no_data: bool = False  # only written from stats thread; no lock needed
 
 SUFFIX_TO_TYPE = {
     "gnss":   "sensor_msgs/msg/NavSatFix",
@@ -57,12 +57,14 @@ def _record(topic: str, n_bytes: int, robot_id: Optional[int] = None) -> None:
             _last_seen[robot_id] = time.monotonic()
 
 
-def _check_health(silence_threshold: float = 10.0) -> None:
+def _check_health(silence_threshold: float = 10.0,
+                  total_m: Optional[int] = None) -> None:
     global _warned_no_data
     now = time.monotonic()
 
     with _lock:
-        total_m = _total_msgs
+        if total_m is None:
+            total_m = _total_msgs
         snap_last_seen = dict(_last_seen)
 
     if not _warned_no_data and total_m == 0 and (now - _start_time) > 15.0:
@@ -168,7 +170,7 @@ def _stats_loop(interval: float = 1.0, stats_only: bool = False,
             total_m = _total_msgs
             _counts.clear()
             _bytes.clear()
-        _check_health(silence_threshold)
+        _check_health(silence_threshold, total_m=total_m)
         total_rate = sum(snap_counts.values()) / dt
         total_kb   = sum(snap_bytes.values()) / dt / 1024
         robots_seen = {_parse_kafka_topic(t) or _parse_mqtt_topic(t)
