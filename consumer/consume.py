@@ -33,6 +33,10 @@ _counts: dict[str, int] = defaultdict(int)
 _bytes:  dict[str, int] = defaultdict(int)
 _total_msgs = 0
 _total_bytes = 0
+_last_seen: dict[int, float] = {}
+_warned_silent: set[int] = set()
+_start_time: float = time.monotonic()
+_warned_no_data: bool = False
 
 SUFFIX_TO_TYPE = {
     "gnss":   "sensor_msgs/msg/NavSatFix",
@@ -42,13 +46,38 @@ SUFFIX_TO_TYPE = {
 }
 
 
-def _record(topic: str, n_bytes: int) -> None:
+def _record(topic: str, n_bytes: int, robot_id: Optional[int] = None) -> None:
     global _total_msgs, _total_bytes
     with _lock:
         _counts[topic] += 1
         _bytes[topic] += n_bytes
         _total_msgs += 1
         _total_bytes += n_bytes
+        if robot_id is not None:
+            _last_seen[robot_id] = time.monotonic()
+
+
+def _check_health(silence_threshold: float = 10.0) -> None:
+    global _warned_no_data
+    now = time.monotonic()
+
+    with _lock:
+        total_m = _total_msgs
+        snap_last_seen = dict(_last_seen)
+
+    if not _warned_no_data and total_m == 0 and (now - _start_time) > 15.0:
+        print("\n[WARNING] No messages received — is the fleet running and broker reachable?",
+              flush=True)
+        _warned_no_data = True
+
+    for robot_id, last_t in snap_last_seen.items():
+        elapsed = now - last_t
+        if elapsed > silence_threshold:
+            if robot_id not in _warned_silent:
+                print(f"\n[WARNING] robot_{robot_id} silent for {elapsed:.0f}s", flush=True)
+                _warned_silent.add(robot_id)
+        else:
+            _warned_silent.discard(robot_id)
 
 
 def _t0_from_json(payload: bytes) -> Optional[int]:
@@ -125,7 +154,8 @@ def _print_line(robot_id: int, topic: str, suffix: str, lat_ms: float,
           flush=True)
 
 
-def _stats_loop(interval: float = 1.0, stats_only: bool = False) -> None:
+def _stats_loop(interval: float = 1.0, stats_only: bool = False,
+                silence_threshold: float = 10.0) -> None:
     t_prev = time.monotonic()
     while not _stop.is_set():
         time.sleep(interval)
@@ -138,6 +168,7 @@ def _stats_loop(interval: float = 1.0, stats_only: bool = False) -> None:
             total_m = _total_msgs
             _counts.clear()
             _bytes.clear()
+        _check_health(silence_threshold)
         total_rate = sum(snap_counts.values()) / dt
         total_kb   = sum(snap_bytes.values()) / dt / 1024
         robots_seen = {_parse_kafka_topic(t) or _parse_mqtt_topic(t)
@@ -186,7 +217,7 @@ def consume_kafka(bootstrap: str, robot_filter: Optional[set[int]],
         if t0_ns is None:
             continue
         lat_ms = (t1_ns - t0_ns) / 1e6
-        _record(msg.topic(), len(msg.value()))
+        _record(msg.topic(), len(msg.value()), robot_id=robot_id)
         _print_line(robot_id, msg.topic(), suffix, lat_ms, len(msg.value()), stats_only)
     consumer.close()
 
@@ -207,7 +238,7 @@ def consume_mqtt(host: str, port: int, robot_filter: Optional[set[int]],
         if t0_ns is None:
             return
         lat_ms = (t1_ns - t0_ns) / 1e6
-        _record(msg.topic, len(msg.payload))
+        _record(msg.topic, len(msg.payload), robot_id=robot_id)
         _print_line(robot_id, msg.topic, suffix, lat_ms, len(msg.payload), stats_only)
 
     client = mqtt.Client()
@@ -231,14 +262,21 @@ def main() -> None:
     parser.add_argument("--stats-only", action="store_true")
     parser.add_argument("--format", choices=["json", "cdr", "auto"], default="auto",
                         help="Payload format: json, cdr, or auto-detect (default: auto)")
+    parser.add_argument(
+        "--silence-threshold", type=float, default=10.0, metavar="SECONDS",
+        help="seconds of robot silence before a warning is printed (default: 10)",
+    )
     args = parser.parse_args()
 
     robot_filter: Optional[set[int]] = None
     if args.robots:
         robot_filter = {int(r.strip()) for r in args.robots.split(",")}
 
-    stats_thread = threading.Thread(target=_stats_loop,
-                                    kwargs={"stats_only": args.stats_only}, daemon=True)
+    stats_thread = threading.Thread(
+        target=_stats_loop,
+        kwargs={"stats_only": args.stats_only, "silence_threshold": args.silence_threshold},
+        daemon=True,
+    )
     stats_thread.start()
 
     print(f"Listening on {args.broker.upper()}  format={args.format} ... (Ctrl+C to stop)\n",
