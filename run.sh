@@ -77,7 +77,6 @@ stop_fleet() {
 }
 
 if [[ "${1:-}" == "--stop" ]]; then
-    echo "  Robots   : ${N}"
     stop_fleet
     exit 0
 fi
