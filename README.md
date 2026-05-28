@@ -280,6 +280,39 @@ Outputs:
 - `trajectories.png` — 500 dpi satellite map (Esri WorldImagery)
 - `trajectories.pdf` — vector version for publications
 
+## Latency capture
+
+Record per-message end-to-end latency (ROS publish → broker → consumer) to
+JSONL and summarize it. Latency is `t1_ns − header.stamp`, where each robot
+stamps `header.stamp = time.time_ns()` at publish time.
+
+```bash
+# 0. Build the consumer image once
+docker build -t ros2-fleet-consumer consumer/
+
+# 1. Run a 60 s capture with 10 robots on Kafka
+BAG_PATH=bags/rorbots_follower_leader_parcelle_1MONT_ros2 \
+    N=10 BROKER=kafka DURATION=60 ./tools/run_latency_capture.sh
+
+# 2. Analyze the artifacts the run prints the path to
+python3 tools/analyze_latency.py latency_artifacts/<run>/
+```
+
+Artifacts written to `latency_artifacts/<timestamp>/`:
+
+| File | Contents |
+|------|----------|
+| `consumer.jsonl` | one record per received message: `robot_id, suffix, topic, t0_ns, t1_ns, latency_ns, payload_bytes` |
+| `publisher/publisher_robot_<id>.jsonl` | one record per published message: `robot_id, suffix, topic, t0_ns` |
+
+`analyze_latency.py` joins the two sides on the `(robot_id, suffix, t0_ns)`
+set — so MQTT QoS-1 duplicate deliveries do not inflate the match count — and
+prints per-stream p50/p95/p99/max latency, throughput, and drop rate.
+
+The orchestrator runs the 3-stage flow (brokers → consumer → robots) so the
+consumer never misses early messages, captures for `DURATION` seconds, then
+tears the fleet down (also on Ctrl+C).
+
 ## Decoding CDR in Python
 
 ```python
