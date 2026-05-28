@@ -44,9 +44,13 @@ _log_lock = threading.Lock()
 
 
 def _log_latency(robot_id: int, suffix: str, topic: str,
-                 t0_ns: int, t1_ns: int, latency_ns: int,
+                 t0_ns: int, t1_ns, t2_ns: int, latency_ns: int,
                  payload_bytes: int) -> None:
-    """Append one JSONL latency record. No-op when logging is disabled."""
+    """Append one JSONL latency record. No-op when logging is disabled.
+
+    t1_ns is the sink-produce stamp (ns) or None when unavailable (MQTT).
+    t2_ns is the consumer receive stamp. latency_ns is end-to-end (t2 - t0).
+    """
     # _log_fh is set once in main() before threads start; safe to read without lock.
     if _log_fh is None:
         return
@@ -56,6 +60,7 @@ def _log_latency(robot_id: int, suffix: str, topic: str,
         "topic": topic,
         "t0_ns": t0_ns,
         "t1_ns": t1_ns,
+        "t2_ns": t2_ns,
         "latency_ns": latency_ns,
         "payload_bytes": payload_bytes,
     }, separators=(",", ":"))
@@ -239,14 +244,17 @@ def consume_kafka(bootstrap: str, robot_filter: Optional[set[int]],
         robot_id, suffix = parsed
         if robot_filter and robot_id not in robot_filter:
             continue
-        t1_ns = time.time_ns()
+        t2_ns = time.time_ns()
         t0_ns = _decode(msg.value(), suffix, fmt, msg.headers())
         if t0_ns is None:
             continue
-        lat_ms = (t1_ns - t0_ns) / 1e6
+        # Kafka record CreateTime is the sink-produce wall-clock (ms). -1/0 = unset.
+        _ts_type, ts_ms = msg.timestamp()
+        t1_ns = ts_ms * 1_000_000 if (ts_ms is not None and ts_ms > 0) else None
+        lat_ms = (t2_ns - t0_ns) / 1e6
         _record(msg.topic(), len(msg.value()), robot_id=robot_id)
         _log_latency(robot_id, suffix, msg.topic(),
-                     t0_ns, t1_ns, t1_ns - t0_ns, len(msg.value()))
+                     t0_ns, t1_ns, t2_ns, t2_ns - t0_ns, len(msg.value()))
         _print_line(robot_id, msg.topic(), suffix, lat_ms, len(msg.value()), stats_only)
     consumer.close()
 
@@ -262,14 +270,15 @@ def consume_mqtt(host: str, port: int, robot_filter: Optional[set[int]],
         robot_id, suffix = parsed
         if robot_filter and robot_id not in robot_filter:
             return
-        t1_ns = time.time_ns()
+        t2_ns = time.time_ns()
         t0_ns = _decode(msg.payload, suffix, fmt)
         if t0_ns is None:
             return
-        lat_ms = (t1_ns - t0_ns) / 1e6
+        lat_ms = (t2_ns - t0_ns) / 1e6
         _record(msg.topic, len(msg.payload), robot_id=robot_id)
+        # MQTT (Phase 1) has no broker/sink timestamp visible to subscribers.
         _log_latency(robot_id, suffix, msg.topic,
-                     t0_ns, t1_ns, t1_ns - t0_ns, len(msg.payload))
+                     t0_ns, None, t2_ns, t2_ns - t0_ns, len(msg.payload))
         _print_line(robot_id, msg.topic, suffix, lat_ms, len(msg.payload), stats_only)
 
     client = mqtt.Client()
