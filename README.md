@@ -288,7 +288,7 @@ stamps `header.stamp = time.time_ns()` at publish time.
 
 ```bash
 # 0. Build the consumer image once
-docker build -t ros2-fleet-consumer consumer/
+docker build -t ros2-fleet-consumer -f consumer/Dockerfile .
 
 # 1. Run a 60 s capture with 10 robots on Kafka
 BAG_PATH=bags/rorbots_follower_leader_parcelle_1MONT_ros2 \

@@ -15,7 +15,7 @@
 #   OUTPUT_DIR  artifacts dir (default: latency_artifacts/<timestamp>)
 #
 # Usage:
-#   docker build -t ros2-fleet-consumer consumer/        # once
+#   docker build -t ros2-fleet-consumer -f consumer/Dockerfile .   # once
 #   BAG_PATH=bags/..._ros2 N=10 BROKER=kafka DURATION=60 ./tools/run_latency_capture.sh
 #   python3 tools/analyze_latency.py latency_artifacts/<run>/
 set -euo pipefail
@@ -39,7 +39,7 @@ fi
 
 if ! docker image inspect ros2-fleet-consumer >/dev/null 2>&1; then
     echo "ERROR: 'ros2-fleet-consumer' image not found. Build it first:" >&2
-    echo "  docker build -t ros2-fleet-consumer consumer/" >&2
+    echo "  docker build -t ros2-fleet-consumer -f consumer/Dockerfile ." >&2
     exit 3
 fi
 
