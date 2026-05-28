@@ -44,7 +44,7 @@ _log_lock = threading.Lock()
 
 
 def _log_latency(robot_id: int, suffix: str, topic: str,
-                 t0_ns: int, t1_ns, t2_ns: int, latency_ns: int,
+                 t0_ns: int, t1_ns: Optional[int], t2_ns: int, latency_ns: int,
                  payload_bytes: int) -> None:
     """Append one JSONL latency record. No-op when logging is disabled.
 
@@ -249,7 +249,7 @@ def consume_kafka(bootstrap: str, robot_filter: Optional[set[int]],
         if t0_ns is None:
             continue
         # Kafka record CreateTime is the sink-produce wall-clock (ms). -1/0 = unset.
-        _ts_type, ts_ms = msg.timestamp()
+        _, ts_ms = msg.timestamp()
         t1_ns = ts_ms * 1_000_000 if (ts_ms is not None and ts_ms > 0) else None
         lat_ms = (t2_ns - t0_ns) / 1e6
         _record(msg.topic(), len(msg.value()), robot_id=robot_id)
