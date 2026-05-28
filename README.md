@@ -393,6 +393,35 @@ The orchestrator runs the 3-stage flow (brokers → consumer → robots) so the
 consumer never misses early messages, captures for `DURATION` seconds, then
 tears the fleet down (also on Ctrl+C).
 
+### CSV export and paper table
+
+`analyze_latency.py --csv` writes a machine-readable summary: one `level=run`
+aggregate row per capture (broker, robot count, received, expected, delivery %,
+pooled avg/p50/p95/p99) plus per-suffix detail rows. Broker is derived from the
+consumer topic (`.` = Kafka, `/` = MQTT) and robot count from the publisher
+files — no extra metadata needed.
+
+```bash
+# Aggregate every capture into one CSV (--append, header written once)
+rm -f results.csv
+for d in latency_artifacts/*/; do
+    python3 tools/analyze_latency.py "$d" --csv results.csv --append --quiet
+done
+```
+
+`make_paper_table.py` then renders the `level=run` rows into the LaTeX template
+`table_templete.txt` (Kafka rows first, then MQTT, each sorted by robot count)
+and writes `table_results.txt`:
+
+```bash
+python3 tools/make_paper_table.py --csv results.csv --out table_results.txt
+```
+
+`Delivery = min(100, received/expected×100)` — clamped because MQTT QoS-1
+duplicate deliveries can push received above expected. The template's caption,
+column header, and booktabs rules are preserved; only the `%%ROWS%%` body is
+replaced.
+
 ## Decoding CDR in Python
 
 ```python

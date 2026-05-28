@@ -1,0 +1,31 @@
+\begin{table*}[htbp]
+\centering
+\caption{Delivery rate and per-message latency for Kafka and MQTT under increasing numbers of virtual robots. P50, P95, and P99 denote latency percentiles.}
+\label{tab:broker_delivery_latency}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+\textbf{Broker} &
+\textbf{Robots} &
+\textbf{Received} &
+\textbf{Expected} &
+\textbf{Delivery} &
+\textbf{Avg} &
+\textbf{P50} &
+\textbf{P95} &
+\textbf{P99} \\
+&
+&
+&
+&
+\textbf{[\%]} &
+\textbf{[ms]} &
+\textbf{[ms]} &
+\textbf{[ms]} &
+\textbf{[ms]} \\
+\midrule
+%%ROWS%%
+\bottomrule
+\end{tabular}
+\end{table*}
