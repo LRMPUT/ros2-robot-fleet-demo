@@ -44,6 +44,10 @@ if ! docker image inspect ros2-fleet-consumer >/dev/null 2>&1; then
 fi
 
 ABS_OUT="$(mkdir -p "${OUTPUT_DIR}/publisher" && cd "${OUTPUT_DIR}" && pwd)"
+# Export so BOTH run.sh stages see it: the brokers stage's gen_fleet.sh injects
+# the ${LATENCY_LOG_DIR}:/latency mount, and the robots stage's docker compose
+# substitutes the host path at `up` time.
+export LATENCY_LOG_DIR="${ABS_OUT}/publisher"
 CONSUMER_CID=""
 
 cleanup() {
@@ -75,10 +79,9 @@ CONSUMER_CID="$(docker run -d --network host \
     --log-file /logs/consumer.jsonl --stats-only)"
 sleep 3
 
-# Stage 3: robots, with publisher logging into <OUTPUT_DIR>/publisher.
-# LATENCY_LOG_DIR is forwarded to the robot containers by docker-compose via run.sh.
-LATENCY_LOG_DIR="${ABS_OUT}/publisher" \
-    N="${N}" BROKER="${BROKER}" BAG_PATH="${BAG_PATH}" \
+# Stage 3: robots. LATENCY_LOG_DIR (exported above) is already baked into the
+# compose file by the brokers-stage gen_fleet.sh and substituted here at `up`.
+N="${N}" BROKER="${BROKER}" BAG_PATH="${BAG_PATH}" \
     "${REPO_DIR}/run.sh" --stage robots
 
 echo "[capture] capturing for ${DURATION}s..."
