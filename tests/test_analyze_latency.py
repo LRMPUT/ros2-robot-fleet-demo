@@ -73,3 +73,23 @@ def test_analyze_null_sink_reports_stages_na(tmp_path):
     # No publisher dir -> drop accounting degrades.
     assert odom["published"] is None
     assert odom["drop_rate"] is None
+
+
+def test_analyze_mixed_broker_stages_count_only_kafka(tmp_path):
+    # Same suffix, two records: one Kafka (integer sink t1) and one MQTT
+    # (null t1). staged_count and the stage percentiles must reflect ONLY the
+    # Kafka record; e2e count includes both.
+    _write_jsonl(tmp_path / "consumer.jsonl", [
+        {"robot_id": 1, "suffix": "gnss", "topic": "ros2.robot_1.gnss",
+         "t0_ns": 100, "t1_ns": 600100, "t2_ns": 1100100,
+         "latency_ns": 1100000, "payload_bytes": 10},
+        {"robot_id": 2, "suffix": "gnss", "topic": "ros2/robot_2/gnss",
+         "t0_ns": 200, "t1_ns": None, "t2_ns": 1200200,
+         "latency_ns": 1000000, "payload_bytes": 10},
+    ])
+    report = al.analyze(str(tmp_path))
+    gnss = report["by_suffix"]["gnss"]
+    assert gnss["count"] == 2                 # both records counted for e2e
+    assert gnss["staged_count"] == 1          # only the Kafka record has a sink stamp
+    assert gnss["ingest_p50_ms"] == 0.6       # (600100 - 100) / 1e6
+    assert gnss["transport_p50_ms"] == 0.5    # (1100100 - 600100) / 1e6
