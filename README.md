@@ -280,6 +280,85 @@ Outputs:
 - `trajectories.png` — 500 dpi satellite map (Esri WorldImagery)
 - `trajectories.pdf` — vector version for publications
 
+### Extract trajectories directly from the bag (no live fleet needed)
+
+If you just want to reproduce or visualise trajectories without running the
+full fleet, extract them straight from the rosbag:
+
+```bash
+pip install pandas geopandas folium contextily matplotlib shapely
+
+python3 tools/extract_gnss_from_bag.py \
+  --bag bags/rorbots_follower_leader_parcelle_1MONT_ros2/ \
+  --robots 1-10 \
+  --out trajectories/
+
+python3 tools/plot_trajectories.py trajectories/
+```
+
+Per-robot offsets are pre-computed from the field geometry (boustrophedon strip
+layout) and hardcoded for standard fleet sizes: **1, 5, 10, 25, 50 robots**.
+Each size tiles robots in a seamless grid — e.g. 25 robots → 5 rows × 5 cols.
+
+```bash
+# 25 robots (5×5 grid)
+python3 tools/extract_gnss_from_bag.py --bag bags/... --robots 1-25 --out traj_25/
+python3 tools/plot_trajectories.py traj_25/
+```
+
+To add a new fleet size, run `gen_fleet_offsets.py` and paste the printed table
+into `extract_gnss_from_bag.py`:
+
+```bash
+python3 tools/gen_fleet_offsets.py --bag bags/rorbots_follower_leader_parcelle_1MONT_ros2/ --n 20
+```
+
+### Extract from an MCAP bag (single robot, no offset tiling)
+
+For MCAP bags (e.g. `rosbag2_2026_04_10-11_01_18`) use the MCAP extractor,
+which reads the bag directly via the `mcap` library — no ROS installation needed:
+
+Install all deps for the local MCAP tools (once):
+
+```bash
+pip install mcap mcap-ros2-support folium paho-mqtt matplotlib numpy contextily pyproj rasterio
+```
+
+**Extract to static HTML map:**
+
+```bash
+python3 tools/extract_gnss_from_mcap.py \
+  --bag bags/rosbag2_2026_04_10-11_01_18/ \
+  --out trajectories_mcap/gnss_trajectory.html \
+  --tsv trajectories_mcap/gnss.tsv
+```
+
+Opens `trajectories_mcap/gnss_trajectory.html` — an interactive Leaflet map
+with the full trajectory (blue polyline, green = start, red = end).
+The TSV (`timestamp_ns / latitude / longitude / altitude`) is compatible with
+`tools/plot_trajectories.py` if you rename it to `robot_1_gnss.txt`.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--bag` | — | Bag directory or `.mcap` file |
+| `--topic` | `/sensing/ins/imu/nav_sat_fix` | NavSatFix topic |
+| `--out` | `trajectories_mcap/gnss_trajectory.html` | Output HTML map |
+| `--tsv` | `trajectories_mcap/gnss.tsv` | Raw TSV (omit to skip) |
+
+**Full live demo (MQTT + consumer echo + matplotlib viz):**
+
+```bash
+# One command starts everything: broker, consumer echo, live OSM viz, bag publisher
+./tools/run_mcap_demo.sh
+
+# Options via env vars
+BAG=bags/rosbag2_2026_04_10-11_01_18 SPEED=2.0 LOOP=--loop ./tools/run_mcap_demo.sh
+```
+
+`live_gnss_viz.py` opens a matplotlib window with an OpenStreetMap background
+(hardcoded extent for the `rosbag2_2026_04_10` bag, Poznań area) and plots each
+incoming point in real-time. The trail fades old→new using the `plasma` colormap.
+
 ## Latency capture
 
 Record per-message end-to-end latency (ROS publish → broker → consumer) to
