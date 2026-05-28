@@ -283,7 +283,7 @@ Outputs:
 ## Latency capture
 
 Record per-message end-to-end latency (ROS publish → broker → consumer) to
-JSONL and summarize it. Latency is `t1_ns − header.stamp`, where each robot
+JSONL and summarize it. Latency is `t2_ns − header.stamp`, where each robot
 stamps `header.stamp = time.time_ns()` at publish time.
 
 ```bash
@@ -302,12 +302,13 @@ Artifacts written to `latency_artifacts/<timestamp>/`:
 
 | File | Contents |
 |------|----------|
-| `consumer.jsonl` | one record per received message: `robot_id, suffix, topic, t0_ns, t1_ns, latency_ns, payload_bytes` |
+| `consumer.jsonl` | one record per received message: `robot_id, suffix, topic, t0_ns (publish), t1_ns (sink-produce; null for MQTT), t2_ns (consume), latency_ns (e2e), payload_bytes` |
 | `publisher/publisher_robot_<id>.jsonl` | one record per published message: `robot_id, suffix, topic, t0_ns` |
 
 `analyze_latency.py` joins the two sides on the `(robot_id, suffix, t0_ns)`
 set — so MQTT QoS-1 duplicate deliveries do not inflate the match count — and
 prints per-stream p50/p95/p99/max latency, throughput, and drop rate.
+For Kafka it also reports two stage columns — `ingest` (publish→sink) and `transport` (sink→consumer) — derived from `t1_ns`; these show `n/a` for MQTT in Phase 1 (no sink timestamp).
 
 The orchestrator runs the 3-stage flow (brokers → consumer → robots) so the
 consumer never misses early messages, captures for `DURATION` seconds, then
