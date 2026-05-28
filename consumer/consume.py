@@ -47,6 +47,7 @@ def _log_latency(robot_id: int, suffix: str, topic: str,
                  t0_ns: int, t1_ns: int, latency_ns: int,
                  payload_bytes: int) -> None:
     """Append one JSONL latency record. No-op when logging is disabled."""
+    # _log_fh is set once in main() before threads start; safe to read without lock.
     if _log_fh is None:
         return
     rec = _json.dumps({

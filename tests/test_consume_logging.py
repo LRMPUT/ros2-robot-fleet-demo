@@ -24,6 +24,7 @@ def test_log_latency_noop_when_disabled():
 
 
 def test_log_latency_writes_one_jsonl_record():
+    _reset_log()
     buf = io.StringIO()
     consume._log_fh = buf
     try:
