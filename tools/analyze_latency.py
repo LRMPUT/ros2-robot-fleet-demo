@@ -115,11 +115,11 @@ def _print_report(report: dict) -> None:
     print(hdr)
     print("-" * len(hdr))
     for suffix, v in report["by_suffix"].items():
-        drop = "   n/a" if v["drop_rate"] is None else f"{v['drop_rate'] * 100:6.2f}"
-        tput = "   n/a" if v["throughput_msg_s"] is None else f"{v['throughput_msg_s']:8.1f}"
+        drop = "n/a" if v["drop_rate"] is None else f"{v['drop_rate'] * 100:.2f}"
+        tput = "n/a" if v["throughput_msg_s"] is None else f"{v['throughput_msg_s']:.1f}"
         print(f"{suffix:<8} {v['count']:>8,} {v['p50_ms']:>8.2f} "
               f"{v['p95_ms']:>8.2f} {v['p99_ms']:>8.2f} {v['max_ms']:>8.2f} "
-              f"{tput} {drop:>7}")
+              f"{tput:>8} {drop:>7}")
 
 
 def main() -> None:

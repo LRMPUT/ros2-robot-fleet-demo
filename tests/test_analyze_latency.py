@@ -48,7 +48,7 @@ def test_analyze_computes_drop_rate_and_percentiles(tmp_path):
 def test_analyze_without_publisher_dir_degrades(tmp_path):
     _write_jsonl(tmp_path / "consumer.jsonl", [
         {"robot_id": 2, "suffix": "odom", "topic": "ros2.robot_2.odom",
-         "t0_ns": 5, "t1_ns": 1005, "latency_ns": 1000, "payload_bytes": 8},
+         "t0_ns": 5, "t1_ns": 1005, "latency_ns": 1000000, "payload_bytes": 8},
     ])
     report = al.analyze(str(tmp_path))
     odom = report["by_suffix"]["odom"]
