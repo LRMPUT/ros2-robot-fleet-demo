@@ -38,6 +38,30 @@ _warned_silent: set[int] = set()
 _start_time: float = time.monotonic()
 _warned_no_data: bool = False  # only written from stats thread; no lock needed
 
+# JSONL latency log. _log_fh is None unless --log-file is given.
+_log_fh = None
+_log_lock = threading.Lock()
+
+
+def _log_latency(robot_id: int, suffix: str, topic: str,
+                 t0_ns: int, t1_ns: int, latency_ns: int,
+                 payload_bytes: int) -> None:
+    """Append one JSONL latency record. No-op when logging is disabled."""
+    if _log_fh is None:
+        return
+    rec = _json.dumps({
+        "robot_id": robot_id,
+        "suffix": suffix,
+        "topic": topic,
+        "t0_ns": t0_ns,
+        "t1_ns": t1_ns,
+        "latency_ns": latency_ns,
+        "payload_bytes": payload_bytes,
+    }, separators=(",", ":"))
+    with _log_lock:
+        _log_fh.write(rec + "\n")
+
+
 SUFFIX_TO_TYPE = {
     "gnss":   "sensor_msgs/msg/NavSatFix",
     "odom":   "nav_msgs/msg/Odometry",
@@ -220,6 +244,8 @@ def consume_kafka(bootstrap: str, robot_filter: Optional[set[int]],
             continue
         lat_ms = (t1_ns - t0_ns) / 1e6
         _record(msg.topic(), len(msg.value()), robot_id=robot_id)
+        _log_latency(robot_id, suffix, msg.topic(),
+                     t0_ns, t1_ns, t1_ns - t0_ns, len(msg.value()))
         _print_line(robot_id, msg.topic(), suffix, lat_ms, len(msg.value()), stats_only)
     consumer.close()
 
@@ -241,6 +267,8 @@ def consume_mqtt(host: str, port: int, robot_filter: Optional[set[int]],
             return
         lat_ms = (t1_ns - t0_ns) / 1e6
         _record(msg.topic, len(msg.payload), robot_id=robot_id)
+        _log_latency(robot_id, suffix, msg.topic,
+                     t0_ns, t1_ns, t1_ns - t0_ns, len(msg.payload))
         _print_line(robot_id, msg.topic, suffix, lat_ms, len(msg.payload), stats_only)
 
     client = mqtt.Client()
@@ -268,7 +296,13 @@ def main() -> None:
         "--silence-threshold", type=float, default=10.0, metavar="SECONDS",
         help="seconds of robot silence before a warning is printed (default: 10)",
     )
+    parser.add_argument("--log-file", default=None,
+                        help="Append per-message latency JSONL to this path")
     args = parser.parse_args()
+
+    global _log_fh
+    if args.log_file:
+        _log_fh = open(args.log_file, "a", buffering=1)
 
     robot_filter: Optional[set[int]] = None
     if args.robots:
