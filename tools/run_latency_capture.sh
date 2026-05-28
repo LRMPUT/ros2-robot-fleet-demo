@@ -37,6 +37,13 @@ if [[ ! -f "${BAG_PATH}/metadata.yaml" ]]; then
     exit 2
 fi
 
+# Resolve to an absolute path and export it. docker compose treats a relative
+# bind-mount source (one not starting with ./ or /) as a NAMED volume, which
+# fails the robot services with "undefined volume". An absolute path is always
+# a bind mount. Exporting overrides any relative BAG_PATH inherited by run.sh.
+BAG_PATH="$(cd "${BAG_PATH}" && pwd)"
+export BAG_PATH
+
 if ! docker image inspect ros2-fleet-consumer >/dev/null 2>&1; then
     echo "ERROR: 'ros2-fleet-consumer' image not found. Build it first:" >&2
     echo "  docker build -t ros2-fleet-consumer -f consumer/Dockerfile ." >&2
@@ -44,6 +51,11 @@ if ! docker image inspect ros2-fleet-consumer >/dev/null 2>&1; then
 fi
 
 ABS_OUT="$(mkdir -p "${OUTPUT_DIR}/publisher" && cd "${OUTPUT_DIR}" && pwd)"
+# The robot image runs as a non-root user (uid 10001), so the bind-mounted log
+# dirs must be writable by other users or the publisher logger hits
+# PermissionError and the robot exits before publishing. World-writable is fine
+# for local benchmark artifacts in a timestamped dir.
+chmod 777 "${ABS_OUT}" "${ABS_OUT}/publisher"
 # Export so BOTH run.sh stages see it: the brokers stage's gen_fleet.sh injects
 # the ${LATENCY_LOG_DIR}:/latency mount, and the robots stage's docker compose
 # substitutes the host path at `up` time.
