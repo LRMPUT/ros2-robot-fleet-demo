@@ -9,6 +9,8 @@ GEN = REPO / "gen_fleet.sh"
 
 def _run(out_file, env_extra):
     env = dict(os.environ, BROKER="kafka", MSG_TYPE="multi", **env_extra)
+    env.pop("LATENCY_LOG_DIR", None)
+    env.update(env_extra)
     subprocess.run(["bash", str(GEN), "2", str(out_file)],
                    check=True, env=env, capture_output=True, text=True)
     return out_file.read_text()
