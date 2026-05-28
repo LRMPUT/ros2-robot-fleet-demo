@@ -1,0 +1,31 @@
+coordinatorHost: 127.0.0.1
+coordinatorPort: 4000
+localWorkerHost: 127.0.0.1
+workerId: 9
+logLevel: LOG_WARNING
+
+physicalSources:
+  - logicalSourceName: gnss
+    physicalSourceName: robot_8_gnss
+    type: MQTT_SOURCE
+    configuration:
+      url: 127.0.0.1:1890
+      topic: ros2/robot_8/gnss
+  - logicalSourceName: odom
+    physicalSourceName: robot_8_odom
+    type: MQTT_SOURCE
+    configuration:
+      url: 127.0.0.1:1890
+      topic: ros2/robot_8/odom
+  - logicalSourceName: scan
+    physicalSourceName: robot_8_scan
+    type: MQTT_SOURCE
+    configuration:
+      url: 127.0.0.1:1890
+      topic: ros2/robot_8/scan
+  - logicalSourceName: points
+    physicalSourceName: robot_8_points
+    type: MQTT_SOURCE
+    configuration:
+      url: 127.0.0.1:1890
+      topic: ros2/robot_8/points
