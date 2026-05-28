@@ -9,8 +9,10 @@ the e2e consumer subtracts to compute latency.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import socket
+import threading
 import time
 
 import rosbag2_py
@@ -20,6 +22,36 @@ from rclpy.serialization import deserialize_message
 from rosidl_runtime_py.utilities import get_message
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan, NavSatFix, PointCloud2
+
+class PublisherLatencyLogger:
+    """Append-only JSONL logger of published-message timestamps.
+
+    One file per robot (`publisher_robot_<id>.jsonl`). Thread-safe because
+    MultiTopicRobotReplay drives multiple stream timers on a
+    MultiThreadedExecutor that share one robot's logger.
+    """
+
+    def __init__(self, log_dir: str, robot_id: int) -> None:
+        os.makedirs(log_dir, exist_ok=True)
+        path = os.path.join(log_dir, f"publisher_robot_{robot_id}.jsonl")
+        self._fh = open(path, "a", buffering=1)
+        self._lock = threading.Lock()
+        self._robot_id = robot_id
+
+    def record(self, suffix: str, topic: str, t0_ns: int) -> None:
+        line = json.dumps({
+            "robot_id": self._robot_id,
+            "suffix": suffix,
+            "topic": topic,
+            "t0_ns": t0_ns,
+        }, separators=(",", ":"))
+        with self._lock:
+            self._fh.write(line + "\n")
+
+    def close(self) -> None:
+        with self._lock:
+            self._fh.close()
+
 
 # Per-robot GPS offset — perpendicular to the field's main travel direction
 # (PCA on the INRAE parcelle bag: main axis ~NNW, perp axis ~ENE).
@@ -136,11 +168,15 @@ def derive_robot_id_from_hostname() -> int:
 class RobotReplay(Node):
     """Single-stream replay node: one robot publishes one message type."""
 
-    def __init__(self, robot_id: int, bag_path: str, rate_hz: float, msg_type: str = "navsatfix") -> None:
+    def __init__(self, robot_id: int, bag_path: str, rate_hz: float,
+                 msg_type: str = "navsatfix", latency_logger=None) -> None:
         super().__init__(f"robot_replay_{robot_id}")
         if msg_type not in TYPE_CONFIG:
             raise ValueError(f"Unknown msg_type {msg_type!r}; expected one of {list(TYPE_CONFIG)}")
         type_str, type_class, suffix, _native_rate = TYPE_CONFIG[msg_type]
+        self._suffix = suffix
+        self._topic = f"/robot_{robot_id}/{suffix}"
+        self._latency_logger = latency_logger
         self._robot_id = robot_id
         self._rate_hz = rate_hz
         self._msg_type = msg_type
@@ -155,8 +191,11 @@ class RobotReplay(Node):
     def _tick(self) -> None:
         msg = next(self._looper)
         shift_message(msg, self._robot_id, self._msg_type)
-        restamp_ns(msg, time.time_ns())
+        t0_ns = time.time_ns()
+        restamp_ns(msg, t0_ns)
         self._pub.publish(msg)
+        if self._latency_logger is not None:
+            self._latency_logger.record(self._suffix, self._topic, t0_ns)
 
 
 class MultiTopicRobotReplay(Node):
@@ -164,9 +203,11 @@ class MultiTopicRobotReplay(Node):
     types simultaneously, each at its bag-native rate. Used by the multi-topic
     scalability benchmark."""
 
-    def __init__(self, robot_id: int, bag_path: str, types=MULTI_TYPES) -> None:
+    def __init__(self, robot_id: int, bag_path: str, types=MULTI_TYPES,
+                 latency_logger=None) -> None:
         super().__init__(f"robot_multi_{robot_id}")
         self._robot_id = robot_id
+        self._latency_logger = latency_logger
         self._streams = []
         for short in types:
             if short not in TYPE_CONFIG:
@@ -174,16 +215,21 @@ class MultiTopicRobotReplay(Node):
             type_str, type_class, suffix, native_rate = TYPE_CONFIG[short]
             looper = BagLooper(bag_path, topic_type=type_str)
             pub = self.create_publisher(type_class, f"/robot_{robot_id}/{suffix}", 10)
+            topic = f"/robot_{robot_id}/{suffix}"
             # Capture default-arg pattern so each timer binds to its own stream.
-            def make_tick(_looper=looper, _pub=pub, _short=short):
+            def make_tick(_looper=looper, _pub=pub, _short=short,
+                          _suffix=suffix, _topic=topic):
                 def tick():
                     try:
                         msg = next(_looper)
                     except RuntimeError:
                         return
                     shift_message(msg, self._robot_id, _short)
-                    restamp_ns(msg, time.time_ns())
+                    t0_ns = time.time_ns()
+                    restamp_ns(msg, t0_ns)
                     _pub.publish(msg)
+                    if self._latency_logger is not None:
+                        self._latency_logger.record(_suffix, _topic, t0_ns)
                 return tick
             timer = self.create_timer(1.0 / native_rate, make_tick())
             self._streams.append((short, suffix, native_rate, timer))
@@ -224,6 +270,11 @@ def main() -> None:
         help="Which message type to replay. Use 'multi' for the multi-topic "
              "fleet mode (navsatfix+odometry+laserscan+pointcloud2 in parallel).",
     )
+    parser.add_argument(
+        "--latency-log-dir",
+        default=os.environ.get("LATENCY_LOG_DIR"),
+        help="If set, write publisher_robot_<id>.jsonl per robot here.",
+    )
     args = parser.parse_args()
 
     if not args.bag_path:
@@ -241,10 +292,14 @@ def main() -> None:
             nthreads = min(max(args.num_robots, 4) * (4 if multi else 1), 32)
             executor = MultiThreadedExecutor(num_threads=nthreads)
             for robot_id in range(1, args.num_robots + 1):
+                logger = (PublisherLatencyLogger(args.latency_log_dir, robot_id)
+                          if args.latency_log_dir else None)
                 if multi:
-                    node = MultiTopicRobotReplay(robot_id, args.bag_path)
+                    node = MultiTopicRobotReplay(robot_id, args.bag_path,
+                                                 latency_logger=logger)
                 else:
-                    node = RobotReplay(robot_id, args.bag_path, args.rate_hz, args.msg_type)
+                    node = RobotReplay(robot_id, args.bag_path, args.rate_hz,
+                                       args.msg_type, latency_logger=logger)
                 nodes.append(node)
                 executor.add_node(node)
             print(f"[robot_replay] Fleet mode: {args.num_robots} robots "
@@ -252,10 +307,14 @@ def main() -> None:
             executor.spin()
         else:
             robot_id = args.robot_id if args.robot_id >= 0 else derive_robot_id_from_hostname()
+            logger = (PublisherLatencyLogger(args.latency_log_dir, robot_id)
+                      if args.latency_log_dir else None)
             if multi:
-                node = MultiTopicRobotReplay(robot_id, args.bag_path)
+                node = MultiTopicRobotReplay(robot_id, args.bag_path,
+                                             latency_logger=logger)
             else:
-                node = RobotReplay(robot_id, args.bag_path, args.rate_hz, args.msg_type)
+                node = RobotReplay(robot_id, args.bag_path, args.rate_hz,
+                                   args.msg_type, latency_logger=logger)
             nodes.append(node)
             # Use a multi-threaded executor for the multi-topic case so the
             # 4 timers can fire on separate threads.
