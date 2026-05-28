@@ -1,0 +1,69 @@
+logicalSources:
+  - logicalSourceName: gnss
+    fields:
+      - name: altitude
+        type: FLOAT64
+      - name: header
+        type: TEXT
+      - name: latitude
+        type: FLOAT64
+      - name: longitude
+        type: FLOAT64
+      - name: position_covariance
+        type: TEXT
+      - name: position_covariance_type
+        type: INT16
+      - name: status
+        type: TEXT
+  - logicalSourceName: odom
+    fields:
+      - name: child_frame_id
+        type: TEXT
+      - name: header
+        type: TEXT
+      - name: pose
+        type: TEXT
+      - name: twist
+        type: TEXT
+  - logicalSourceName: scan
+    fields:
+      - name: angle_increment
+        type: FLOAT32
+      - name: angle_max
+        type: FLOAT32
+      - name: angle_min
+        type: FLOAT32
+      - name: header
+        type: TEXT
+      - name: intensities
+        type: TEXT
+      - name: range_max
+        type: FLOAT32
+      - name: range_min
+        type: FLOAT32
+      - name: ranges
+        type: TEXT
+      - name: scan_time
+        type: FLOAT32
+      - name: time_increment
+        type: FLOAT32
+  - logicalSourceName: points
+    fields:
+      - name: data
+        type: TEXT
+      - name: fields
+        type: TEXT
+      - name: header
+        type: TEXT
+      - name: height
+        type: INT64
+      - name: is_bigendian
+        type: BOOLEAN
+      - name: is_dense
+        type: BOOLEAN
+      - name: point_step
+        type: INT64
+      - name: row_step
+        type: INT64
+      - name: width
+        type: INT64
