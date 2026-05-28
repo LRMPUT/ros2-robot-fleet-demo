@@ -45,19 +45,27 @@ def analyze(output_dir: str) -> dict:
     consumer_path = os.path.join(output_dir, "consumer.jsonl")
     pub_dir = os.path.join(output_dir, "publisher")
 
-    # Consumer side: latency samples + received t0 sets, keyed by suffix.
+    # Consumer side: latency samples, stage samples, and received t0 sets,
+    # keyed by suffix.
     lat_ms_by_suffix = defaultdict(list)
+    ingest_ms_by_suffix = defaultdict(list)
+    transport_ms_by_suffix = defaultdict(list)
     recv_t0_by_suffix = defaultdict(set)
-    t1_min = None
-    t1_max = None
+    t2_min = None
+    t2_max = None
     if os.path.exists(consumer_path):
         for rec in _read_jsonl(consumer_path):
             suffix = rec["suffix"]
             lat_ms_by_suffix[suffix].append(rec["latency_ns"] / 1e6)
             recv_t0_by_suffix[suffix].add((rec["robot_id"], rec["t0_ns"]))
-            t1 = rec["t1_ns"]
-            t1_min = t1 if t1_min is None else min(t1_min, t1)
-            t1_max = t1 if t1_max is None else max(t1_max, t1)
+            t2 = rec["t2_ns"]
+            t2_min = t2 if t2_min is None else min(t2_min, t2)
+            t2_max = t2 if t2_max is None else max(t2_max, t2)
+            # Sink stamp t1_ns is None for MQTT (Phase 1); skip its stages.
+            t1 = rec.get("t1_ns")
+            if t1 is not None:
+                ingest_ms_by_suffix[suffix].append((t1 - rec["t0_ns"]) / 1e6)
+                transport_ms_by_suffix[suffix].append((t2 - t1) / 1e6)
 
     # Publisher side: published t0 sets, keyed by suffix (may be absent).
     pub_t0_by_suffix = defaultdict(set)
@@ -67,7 +75,7 @@ def analyze(output_dir: str) -> dict:
             for rec in _read_jsonl(path):
                 pub_t0_by_suffix[rec["suffix"]].add((rec["robot_id"], rec["t0_ns"]))
 
-    window_s = ((t1_max - t1_min) / 1e9) if (t1_min is not None and t1_max is not None and t1_max > t1_min) else None
+    window_s = ((t2_max - t2_min) / 1e9) if (t2_min is not None and t2_max is not None and t2_max > t2_min) else None
 
     by_suffix = {}
     for suffix, samples in sorted(lat_ms_by_suffix.items()):
@@ -80,6 +88,8 @@ def analyze(output_dir: str) -> dict:
             published = len(pub_set)
             matched = len(pub_set & recv_t0_by_suffix[suffix])
             drop_rate = (published - matched) / published if published else None
+        ingest = sorted(ingest_ms_by_suffix.get(suffix, []))
+        transport = sorted(transport_ms_by_suffix.get(suffix, []))
         by_suffix[suffix] = {
             "count": len(s),
             "p50_ms": round(_percentile(s, 0.50), 3),
@@ -88,6 +98,9 @@ def analyze(output_dir: str) -> dict:
             "max_ms": round(s[-1], 3) if s else 0.0,
             "mean_ms": round(statistics.fmean(s), 3) if s else 0.0,
             "throughput_msg_s": round(len(s) / window_s, 1) if window_s else None,
+            "staged_count": len(ingest),
+            "ingest_p50_ms": round(_percentile(ingest, 0.50), 3) if ingest else None,
+            "transport_p50_ms": round(_percentile(transport, 0.50), 3) if transport else None,
             "published": published,
             "matched": matched,
             "drop_rate": drop_rate,
@@ -111,15 +124,17 @@ def _print_report(report: dict) -> None:
         print("(no publisher logs found — drop rate unavailable)")
     print()
     hdr = (f"{'suffix':<8} {'count':>8} {'p50':>8} {'p95':>8} {'p99':>8} "
-           f"{'max':>8} {'msg/s':>8} {'drop%':>7}")
+           f"{'max':>8} {'msg/s':>8} {'drop%':>7} {'ingest':>8} {'transp':>8}")
     print(hdr)
     print("-" * len(hdr))
     for suffix, v in report["by_suffix"].items():
         drop = "n/a" if v["drop_rate"] is None else f"{v['drop_rate'] * 100:.2f}"
         tput = "n/a" if v["throughput_msg_s"] is None else f"{v['throughput_msg_s']:.1f}"
+        ing = "n/a" if v["ingest_p50_ms"] is None else f"{v['ingest_p50_ms']:.2f}"
+        tra = "n/a" if v["transport_p50_ms"] is None else f"{v['transport_p50_ms']:.2f}"
         print(f"{suffix:<8} {v['count']:>8,} {v['p50_ms']:>8.2f} "
               f"{v['p95_ms']:>8.2f} {v['p99_ms']:>8.2f} {v['max_ms']:>8.2f} "
-              f"{tput:>8} {drop:>7}")
+              f"{tput:>8} {drop:>7} {ing:>8} {tra:>8}")
 
 
 def main() -> None:
