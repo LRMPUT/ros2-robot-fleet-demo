@@ -23,6 +23,7 @@ from rosidl_runtime_py.utilities import get_message
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan, NavSatFix, PointCloud2
 
+
 class PublisherLatencyLogger:
     """Append-only JSONL logger of published-message timestamps.
 
@@ -327,6 +328,8 @@ def main() -> None:
                 rclpy.spin(node)
     finally:
         for node in nodes:
+            if node._latency_logger is not None:
+                node._latency_logger.close()
             node.destroy_node()
         rclpy.shutdown()
 

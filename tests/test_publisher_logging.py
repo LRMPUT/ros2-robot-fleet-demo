@@ -27,7 +27,9 @@ def test_logger_writes_one_record_per_call(tmp_path):
     assert json.loads(lines[0]) == {
         "robot_id": 7, "suffix": "gnss", "topic": "/robot_7/gnss", "t0_ns": 123,
     }
-    assert json.loads(lines[1])["suffix"] == "odom"
+    assert json.loads(lines[1]) == {
+        "robot_id": 7, "suffix": "odom", "topic": "/robot_7/odom", "t0_ns": 456,
+    }
 
 
 def test_logger_filename_uses_robot_id(tmp_path):
