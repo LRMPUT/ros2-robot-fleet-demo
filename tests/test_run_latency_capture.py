@@ -17,6 +17,6 @@ def test_missing_bag_path_fails_fast(tmp_path):
     env = dict(os.environ, BAG_PATH=str(tmp_path / "nope"), DURATION="1")
     r = subprocess.run(["bash", str(SCRIPT)], cwd=str(tmp_path),
                        env=env, capture_output=True, text=True)
-    assert r.returncode != 0
+    assert r.returncode == 2
     assert "metadata.yaml" in (r.stdout + r.stderr) or \
            "BAG" in (r.stdout + r.stderr)

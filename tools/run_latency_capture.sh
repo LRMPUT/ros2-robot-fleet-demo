@@ -76,6 +76,7 @@ CONSUMER_CID="$(docker run -d --network host \
 sleep 3
 
 # Stage 3: robots, with publisher logging into <OUTPUT_DIR>/publisher.
+# LATENCY_LOG_DIR is forwarded to the robot containers by docker-compose via run.sh.
 LATENCY_LOG_DIR="${ABS_OUT}/publisher" \
     N="${N}" BROKER="${BROKER}" BAG_PATH="${BAG_PATH}" \
     "${REPO_DIR}/run.sh" --stage robots
@@ -88,7 +89,15 @@ docker stop "${CONSUMER_CID}" >/dev/null 2>&1 || true
 CONSUMER_CID=""
 
 CONSUMER_LINES=$(wc -l < "${ABS_OUT}/consumer.jsonl" 2>/dev/null || echo 0)
-PUB_LINES=$(cat "${ABS_OUT}"/publisher/publisher_robot_*.jsonl 2>/dev/null | wc -l || echo 0)
+shopt -s nullglob
+pub_files=("${ABS_OUT}/publisher/publisher_robot_"*.jsonl)
+shopt -u nullglob
+PUB_LINES=0
+if (( ${#pub_files[@]} > 0 )); then
+    PUB_LINES=$(cat "${pub_files[@]}" | wc -l)
+else
+    echo "[capture] WARNING: no publisher_robot_*.jsonl files found in ${ABS_OUT}/publisher/" >&2
+fi
 
 echo ""
 echo "[capture] done."
