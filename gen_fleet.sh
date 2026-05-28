@@ -36,6 +36,17 @@ fi
 
 IMAGE="ghcr.io/lrmput/ros2-kafka-dispatcher:latest"
 
+# Optional per-robot latency log mount. Empty unless LATENCY_LOG_DIR is set in
+# the environment (the run_latency_capture.sh orchestrator sets it). The
+# ${LATENCY_LOG_DIR} reference stays literal so Docker Compose substitutes the
+# host path at `up` time.
+LATENCY_ENV=""
+LATENCY_VOL=""
+if [[ -n "${LATENCY_LOG_DIR:-}" ]]; then
+    LATENCY_ENV=$'\n      LATENCY_LOG_DIR: "/latency"'
+    LATENCY_VOL=$'\n      - ${LATENCY_LOG_DIR}:/latency'
+fi
+
 # For per-robot MQTT topology, generate per-robot mosquitto configs with the correct
 # listener port. Each broker container gets its own config file in OUT_DIR.
 OUT_DIR="$(dirname "${OUT}")"
@@ -72,11 +83,11 @@ EOF
       BROKER_HOST: "localhost"
       BROKER_PORT: "${PORT}"
       MQTT_QOS: "1"
-      PAYLOAD_FORMAT: "${PAYLOAD_FORMAT}"
+      PAYLOAD_FORMAT: "${PAYLOAD_FORMAT}"${LATENCY_ENV}
     volumes:
       - "\${BAG_PATH:?BAG_PATH is required}:/data/bag:ro"
       - ${SCRIPT_DIR}/edge_entrypoint.sh:/usr/local/bin/edge_entrypoint.sh:ro
-      - ${SCRIPT_DIR}/robot_replay.py:/app/robot_replay.py:ro
+      - ${SCRIPT_DIR}/robot_replay.py:/app/robot_replay.py:ro${LATENCY_VOL}
     entrypoint: ["/usr/local/bin/edge_entrypoint.sh"]
     depends_on:
       - broker_${i}
@@ -97,11 +108,11 @@ EOF
       BROKER_HOST: "localhost"
       BROKER_PORT: "1883"
       MQTT_QOS: "1"
-      PAYLOAD_FORMAT: "${PAYLOAD_FORMAT}"
+      PAYLOAD_FORMAT: "${PAYLOAD_FORMAT}"${LATENCY_ENV}
     volumes:
       - "\${BAG_PATH:?BAG_PATH is required}:/data/bag:ro"
       - ./edge_entrypoint.sh:/usr/local/bin/edge_entrypoint.sh:ro
-      - ./robot_replay.py:/app/robot_replay.py:ro
+      - ./robot_replay.py:/app/robot_replay.py:ro${LATENCY_VOL}
     entrypoint: ["/usr/local/bin/edge_entrypoint.sh"]
     depends_on:
       - broker
