@@ -28,11 +28,11 @@ def test_analyze_computes_drop_rate_and_percentiles(tmp_path):
     # A duplicate delivery of 100 must NOT inflate the matched count.
     _write_jsonl(tmp_path / "consumer.jsonl", [
         {"robot_id": 1, "suffix": "gnss", "topic": "ros2.robot_1.gnss",
-         "t0_ns": 100, "t1_ns": 1100, "latency_ns": 1000, "payload_bytes": 10},
+         "t0_ns": 100, "t1_ns": 1100, "latency_ns": 1000000, "payload_bytes": 10},
         {"robot_id": 1, "suffix": "gnss", "topic": "ros2.robot_1.gnss",
-         "t0_ns": 100, "t1_ns": 1200, "latency_ns": 1100, "payload_bytes": 10},
+         "t0_ns": 100, "t1_ns": 1200, "latency_ns": 1100000, "payload_bytes": 10},
         {"robot_id": 1, "suffix": "gnss", "topic": "ros2.robot_1.gnss",
-         "t0_ns": 300, "t1_ns": 3000, "latency_ns": 2700, "payload_bytes": 10},
+         "t0_ns": 300, "t1_ns": 3000, "latency_ns": 2700000, "payload_bytes": 10},
     ])
 
     report = al.analyze(str(tmp_path))

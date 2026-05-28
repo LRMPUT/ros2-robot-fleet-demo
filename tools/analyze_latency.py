@@ -53,7 +53,7 @@ def analyze(output_dir: str) -> dict:
     if os.path.exists(consumer_path):
         for rec in _read_jsonl(consumer_path):
             suffix = rec["suffix"]
-            lat_ms_by_suffix[suffix].append(rec["latency_ns"] / 1e3)
+            lat_ms_by_suffix[suffix].append(rec["latency_ns"] / 1e6)
             recv_t0_by_suffix[suffix].add((rec["robot_id"], rec["t0_ns"]))
             t1 = rec["t1_ns"]
             t1_min = t1 if t1_min is None else min(t1_min, t1)
