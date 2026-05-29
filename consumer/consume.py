@@ -115,6 +115,10 @@ def _check_health(silence_threshold: float = 10.0,
 def _t0_from_json(payload: bytes) -> Optional[int]:
     try:
         data = _json.loads(payload)
+        # Prefer the self-contained staging envelope when present.
+        ts = data.get("_ts")
+        if isinstance(ts, dict) and ts.get("t0_ns"):
+            return int(ts["t0_ns"])
         stamp = data.get("header", {}).get("stamp", {})
         sec = int(stamp.get("sec", 0))
         nanosec = int(stamp.get("nanosec", 0))
@@ -123,6 +127,21 @@ def _t0_from_json(payload: bytes) -> Optional[int]:
         return sec * 1_000_000_000 + nanosec
     except Exception:
         return None
+
+
+def _t1_from_json(payload: bytes) -> Optional[int]:
+    """Broker-ingress stamp from the `_ts` envelope, or None.
+
+    Stamped by the sink (mosquitto_sink / kafka_sink) at publish time; JSON
+    payloads only (CDR cannot carry the envelope).
+    """
+    try:
+        ts = _json.loads(payload).get("_ts")
+        if isinstance(ts, dict) and ts.get("t1_ns"):
+            return int(ts["t1_ns"])
+    except Exception:
+        pass
+    return None
 
 
 def _t0_from_cdr(payload: bytes, suffix: str) -> Optional[int]:
@@ -150,8 +169,12 @@ def _payload_format_from_headers(headers) -> Optional[str]:
 
 
 def _decode(payload: bytes, suffix: str, fmt: str,
-            kafka_headers=None) -> Optional[int]:
-    """Return t0_ns or None on failure. fmt: 'json', 'cdr', or 'auto'."""
+            kafka_headers=None) -> tuple[Optional[int], Optional[int]]:
+    """Return (t0_ns, t1_ns). t0 is None on failure; t1 is the broker-ingress
+    stamp from the `_ts` envelope (JSON only) or None.
+
+    fmt: 'json', 'cdr', or 'auto'.
+    """
     if fmt == "auto":
         detected = _payload_format_from_headers(kafka_headers)
         if detected:
@@ -160,11 +183,11 @@ def _decode(payload: bytes, suffix: str, fmt: str,
             # Try JSON; fall back to CDR
             t0 = _t0_from_json(payload)
             if t0 is not None:
-                return t0
-            return _t0_from_cdr(payload, suffix)
+                return t0, _t1_from_json(payload)
+            return _t0_from_cdr(payload, suffix), None
     if fmt == "json":
-        return _t0_from_json(payload)
-    return _t0_from_cdr(payload, suffix)
+        return _t0_from_json(payload), _t1_from_json(payload)
+    return _t0_from_cdr(payload, suffix), None
 
 
 def _parse_kafka_topic(topic: str) -> Optional[tuple[int, str]]:
@@ -245,12 +268,16 @@ def consume_kafka(bootstrap: str, robot_filter: Optional[set[int]],
         if robot_filter and robot_id not in robot_filter:
             continue
         t2_ns = time.time_ns()
-        t0_ns = _decode(msg.value(), suffix, fmt, msg.headers())
+        t0_ns, t1_payload_ns = _decode(msg.value(), suffix, fmt, msg.headers())
         if t0_ns is None:
             continue
-        # Kafka record CreateTime is the sink-produce wall-clock (ms). -1/0 = unset.
-        _, ts_ms = msg.timestamp()
-        t1_ns = ts_ms * 1_000_000 if (ts_ms is not None and ts_ms > 0) else None
+        # Prefer the sink's `_ts.t1_ns` (broker-ingress); else fall back to the
+        # Kafka record CreateTime (sink-produce wall-clock, ms). -1/0 = unset.
+        if t1_payload_ns is not None:
+            t1_ns = t1_payload_ns
+        else:
+            _, ts_ms = msg.timestamp()
+            t1_ns = ts_ms * 1_000_000 if (ts_ms is not None and ts_ms > 0) else None
         lat_ms = (t2_ns - t0_ns) / 1e6
         _record(msg.topic(), len(msg.value()), robot_id=robot_id)
         _log_latency(robot_id, suffix, msg.topic(),
@@ -271,14 +298,14 @@ def consume_mqtt(host: str, port: int, robot_filter: Optional[set[int]],
         if robot_filter and robot_id not in robot_filter:
             return
         t2_ns = time.time_ns()
-        t0_ns = _decode(msg.payload, suffix, fmt)
+        t0_ns, t1_ns = _decode(msg.payload, suffix, fmt)
         if t0_ns is None:
             return
         lat_ms = (t2_ns - t0_ns) / 1e6
         _record(msg.topic, len(msg.payload), robot_id=robot_id)
-        # MQTT (Phase 1) has no broker/sink timestamp visible to subscribers.
+        # t1_ns is the sink's broker-ingress stamp from `_ts` (JSON), else None.
         _log_latency(robot_id, suffix, msg.topic,
-                     t0_ns, None, t2_ns, t2_ns - t0_ns, len(msg.payload))
+                     t0_ns, t1_ns, t2_ns, t2_ns - t0_ns, len(msg.payload))
         _print_line(robot_id, msg.topic, suffix, lat_ms, len(msg.payload), stats_only)
 
     client = mqtt.Client()

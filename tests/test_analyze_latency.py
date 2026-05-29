@@ -58,6 +58,21 @@ def test_analyze_computes_stages_drop_rate_and_percentiles(tmp_path):
     assert gnss["transport_p50_ms"] == 0.5    # median of [0.5, 0.5, 1.35]
 
 
+def test_analyze_mqtt_with_ts_envelope_reports_stages(tmp_path):
+    # With the `_ts` envelope the sink now stamps t1 for MQTT too, so the
+    # analyzer must report ingest/transport for MQTT topics (broker-agnostic).
+    _write_jsonl(tmp_path / "consumer.jsonl", [
+        {"robot_id": 1, "suffix": "gnss", "topic": "ros2/robot_1/gnss",
+         "t0_ns": 100, "t1_ns": 600100, "t2_ns": 1100100,
+         "latency_ns": 1_100_000, "payload_bytes": 10},
+    ])
+    report = al.analyze(str(tmp_path))
+    gnss = report["by_suffix"]["gnss"]
+    assert gnss["staged_count"] == 1
+    assert gnss["ingest_p50_ms"] == 0.6        # (600100 - 100) / 1e6
+    assert gnss["transport_p50_ms"] == 0.5     # (1100100 - 600100) / 1e6
+
+
 def test_analyze_null_sink_reports_stages_na(tmp_path):
     # MQTT Phase 1: t1_ns is null -> stages n/a but e2e still computed.
     _write_jsonl(tmp_path / "consumer.jsonl", [
