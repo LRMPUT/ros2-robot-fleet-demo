@@ -1,0 +1,75 @@
+services:
+
+  nes_mqtt:
+    image: eclipse-mosquitto
+    network_mode: host
+    volumes:
+      - ./config:/mosquitto/config
+
+  nes_ui:
+    image: nebulastream/nes-ui-image:latest
+    network_mode: host
+    env_file: .env
+
+  copy_queries:
+    build:
+      context: .
+      dockerfile: config/Dockerfile.copy
+    network_mode: host
+    env_file: .env
+
+  geofence_query:
+    build:
+      context: .
+      dockerfile: config/Dockerfile.geofence
+    network_mode: host
+    env_file: .env
+
+  nes_coordinator:
+    image: nebulastream/nes-executable-image:latest
+    network_mode: host
+    volumes:
+      - ./config:/config
+    command:
+      - nesCoordinator
+      - --coordinatorHost=127.0.0.1
+      - --restIp=127.0.0.1
+      - --restPort=8081
+      - --rpcPort=4000
+      - --worker.coordinatorHost=127.0.0.1
+      - --worker.coordinatorPort=4000
+      - --worker.localWorkerHost=127.0.0.1
+      - --logLevel=LOG_WARNING
+      - --configPath=/config/nes_coordinator_config.yml
+    env_file: .env
+  
+  python_logger:
+    build:
+      context: .
+      dockerfile: config/Dockerfile.logger
+    network_mode: host
+    volumes:
+      - ./scripts:/scripts
+      - ./logs:/logs
+    command: [ "python", "/scripts/logger.py", "127.0.0.1", "1882" ]
+    env_file: .env
+
+  nes_worker_1:
+    image: nebulastream/nes-executable-image:latest
+    network_mode: host
+    volumes:
+      - ./config:/config
+    command:
+      - nesWorker
+      - --configPath=/config/nes_worker_1_config.yml
+    env_file: .env
+
+  nes_worker_2:
+    image: nebulastream/nes-executable-image:latest
+    network_mode: host
+    volumes:
+      - ./config:/config
+    command:
+      - nesWorker
+      - --configPath=/config/nes_worker_2_config.yml
+    env_file: .env
