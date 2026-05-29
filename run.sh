@@ -194,7 +194,7 @@ for ((i=1; i<=N; i+=BATCH)); do
         batch_services+="robot_${j} "
     done
     NUM_ROBOTS="${N}" MSG_TYPE="${MSG_TYPE}" \
-        docker compose "${COMPOSE_ARGS[@]}" up -d --no-deps --remove-orphans ${batch_services}
+        docker compose "${COMPOSE_ARGS[@]}" up -d --no-deps ${batch_services}
     [[ $((i + BATCH)) -le N ]] && sleep 3
 done
 
