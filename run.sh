@@ -67,8 +67,10 @@ fi
 stop_fleet() {
     echo "[fleet] tearing down..."
     if [[ -f "${FLEET_COMPOSE}" ]]; then
-        # BAG_PATH is required by the compose template but irrelevant for `down`.
-        BAG_PATH=/dev/null NUM_ROBOTS="${N}" \
+        # BAG_PATH and LATENCY_LOG_DIR are substituted into volume specs in the
+        # generated fleet file; both must be non-empty for `down` to parse it,
+        # even though their values are irrelevant when tearing down.
+        BAG_PATH=/dev/null LATENCY_LOG_DIR=/dev/null NUM_ROBOTS="${N}" \
             docker compose "${COMPOSE_ARGS[@]}" down -v --remove-orphans 2>&1 | tail -3 || true
         rm -f "${FLEET_COMPOSE}"
     else

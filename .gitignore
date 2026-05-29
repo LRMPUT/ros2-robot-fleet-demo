@@ -3,4 +3,5 @@ __pycache__/
 *.pyc
 .env
 bags/
+/latency_artifacts/
 !NEBULA_FLEET/.env
