@@ -14,6 +14,14 @@ set -euo pipefail
 : "${RATE_HZ:=10}"
 : "${MQTT_QOS:=1}"               # 0 = fire-and-forget, 1 = at-least-once
 : "${BROKER_PORT:=1883}"
+# Fleet routing: 1 (default for Kafka, enables single kafka topic),
+#                0 to use per-robot topics.
+# MQTT always uses per-robot topics (fleet routing not yet supported).
+if [[ "${SINK_KIND}" == "mqtt" ]]; then
+    : "${FLEET_ROUTING:=0}"
+else
+    : "${FLEET_ROUTING:=1}"
+fi
 # JSON default for Kafka; CDR default for MQTT (mosquitto_sink JSON path has
 # introspection issues with nested message types such as NavSatFix).
 if [[ "${SINK_KIND}" == "mqtt" ]]; then
@@ -51,9 +59,17 @@ esac
 SUBS_YAML=""
 for p in "${PAIRS[@]}"; do
     IFS='|' read -r ros_type suffix <<< "$p"
-    SUBS_YAML+="- topic_name: /robot_${ROBOT_ID}/${suffix}
+    if [[ "${FLEET_ROUTING}" == "1" && "${SINK_KIND}" == "kafka" ]]; then
+        SUBS_YAML+="- topic_name: /robot_${ROBOT_ID}/${suffix}
+  msg_type: ${ros_type}
+  kafka_name: fleet.${suffix}
+  kafka_key: robot_${ROBOT_ID}
+"
+    else
+        SUBS_YAML+="- topic_name: /robot_${ROBOT_ID}/${suffix}
   msg_type: ${ros_type}
 "
+    fi
 done
 
 NODE_NAME="kafka_sink_${ROBOT_ID}"
