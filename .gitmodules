@@ -1,0 +1,3 @@
+[submodule "GIS4IoRT-geoflink"]
+	path = GIS4IoRT-geoflink
+	url = https://github.com/Frostyyyl/GIS4IoRT-geoflink
