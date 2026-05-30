@@ -24,24 +24,24 @@
 #      The submodule provides Dockerfile.api, the FastAPI app, and the GIS UDF jar.
 
 services:
-
-  schema-registry:
-    image: confluentinc/cp-schema-registry:8.0.0
-    hostname: schema-registry
-    depends_on:
-      broker:
-        condition: service_healthy
-    ports:
-      - "8081:8081"
-    environment:
-      SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: broker:29092
-      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # not needed for json
+  # schema-registry:
+  #   image: confluentinc/cp-schema-registry:8.0.0
+  #   hostname: schema-registry
+  #   depends_on:
+  #     broker:
+  #       condition: service_healthy
+  #   ports:
+  #     - "8081:8081"
+  #   environment:
+  #     SCHEMA_REGISTRY_HOST_NAME: schema-registry
+  #     SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: broker:29092
+  #     SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
 
   ksqldb-server:
     image: confluentinc/ksqldb-server:0.29.0
@@ -49,15 +49,18 @@ services:
     depends_on:
       broker:
         condition: service_healthy
-      schema-registry:
-        condition: service_healthy
     ports:
       - "8088:8088"
     environment:
       KSQL_BOOTSTRAP_SERVERS: broker:29092
       KSQL_KSQL_SERVICE_ID: ksqldb_fleet
       KSQL_CACHE_MAX_BYTES_BUFFERING: 0
-      KSQL_KSQL_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      KSQL_KSQL_STREAMS_PROCESSING_GUARANTEE: at_least_once
+      KSQL_KSQL_STREAMS_PRODUCER_LINGER_MS: 0
+      KSQL_KSQL_STREAMS_COMMIT_INTERVAL_MS: 100
+      KSQL_KSQL_STREAMS_NUM_STREAM_THREADS: 1
+      # Schema Registry disabled (JSON-only); leave this commented out.
+      # KSQL_KSQL_SCHEMA_REGISTRY_URL: http://schema-registry:8081
       KSQL_KSQL_LOGGING_PROCESSING_TOPIC_REPLICATION_FACTOR: 1
       KSQL_KSQL_LOGGING_PROCESSING_TOPIC_AUTO_CREATE: "true"
       KSQL_KSQL_LOGGING_PROCESSING_STREAM_AUTO_CREATE: "true"
@@ -92,14 +95,13 @@ services:
     depends_on:
       broker:
         condition: service_healthy
-      schema-registry:
-        condition: service_healthy
     ports:
       - "8090:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: fleet
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: broker:29092
-      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
+      # Schema Registry disabled (JSON-only); re-add this line if you re-enable it.
+      # KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
       KAFKA_CLUSTERS_0_KSQLDBSERVER: http://ksqldb-server:8088
 
   gis-api:

@@ -53,21 +53,22 @@ CREATE STREAM IF NOT EXISTS fleet_gnss_raw (
 );
 
 -- ── Robot gps stream ──────────────────────────────────────────────────────
-CREATE STREAM IF NOT EXISTS ROS_GPS_FIX_STREAM WITH (
-  KAFKA_TOPIC  = 'ROS_GPS_FIX_STREAM',
-  VALUE_FORMAT = 'JSON',
-  PARTITIONS   = 50
-) AS SELECT
-  robot_id,
-  ROWTIME                       AS event_ms,
-  latitude,
-  longitude,
-  altitude,
-  status->status                AS gps_status,
-  (header->stamp->sec * 1000) 
-    + (header->stamp->nanosec / 1000000) AS timestamp
-FROM fleet_gnss_raw
-EMIT CHANGES;
+-- the geofence query reads fleet_gnss_raw directly
+-- CREATE STREAM IF NOT EXISTS ROS_GPS_FIX_STREAM WITH (
+--   KAFKA_TOPIC  = 'ROS_GPS_FIX_STREAM',
+--   VALUE_FORMAT = 'JSON',
+--   PARTITIONS   = 50
+-- ) AS SELECT
+--   robot_id,
+--   ROWTIME                       AS event_ms,
+--   latitude,
+--   longitude,
+--   altitude,
+--   status->status                AS gps_status,
+--   (header->stamp->sec * 1000)
+--     + (header->stamp->nanosec / 1000000) AS timestamp
+-- FROM fleet_gnss_raw
+-- EMIT CHANGES;
 
 -- translation for GIS4Io4T-kafka compatibility
 --CREATE STREAM IF NOT EXISTS ROS_GPS_FIX_STREAM AS
