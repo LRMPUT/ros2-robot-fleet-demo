@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Compute latency statistics from a run_tests.py TSV file.
+"""Compute latency statistics from a run_tests.py result file.
 
 Reports count / avg / P50 / P95 / P99 / min / max / std for a chosen stage
 pair, plus the breakdown of each consecutive hop. Mirrors the GeoFlink
 benchmark's calculate_latency output so the numbers line up side by side.
 
-Stages: t0 (event) -> t1 (ingest) -> t2 (ksqlDB) -> t3 (arrival), all in ms.
+Stages: t0 (event) -> t1 (ingest) -> t2 (ksqlDB) -> t3 (arrival). Timestamps in
+the file are nanoseconds (t0/t1 from the dispatcher `_ts` envelope); all
+reported deltas are converted to milliseconds.
 
 Usage:
     python calculate_latency.py results/run_10.txt
@@ -15,30 +17,34 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import csv
 import statistics as stats
 
 import config
 
 COLS = {
-    "t0": "t0_event_ms",
-    "t1": "t1_ingest_ms",
-    "t2": "t2_ksql_ms",
-    "t3": "t3_arrival_ms",
+    "t0": "t0_event_ns",
+    "t1": "t1_ingest_ns",
+    "t2": "t2_ksql_ns",
+    "t3": "t3_arrival_ns",
 }
 ORDER = ["t0", "t1", "t2", "t3"]
+NS_PER_MS = 1_000_000
 
 
 def _load(path: str):
     rows = []
-    with open(path, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f, delimiter="\t")
-        for r in reader:
+    with open(path, encoding="utf-8") as f:
+        header = f.readline().split()
+        idx = {name: header.index(name) for name in COLS.values() if name in header}
+        for line in f:
+            parts = line.split()
+            if len(parts) < len(header):
+                continue
             try:
-                row = {k: int(r[v]) for k, v in COLS.items()}
-                row["robot_id"] = r.get("robot_id", "")
+                row = {k: int(parts[idx[v]]) for k, v in COLS.items()}
+                row["robot_id"] = parts[0]
                 rows.append(row)
-            except (KeyError, ValueError):
+            except (KeyError, ValueError, IndexError):
                 continue  # skip malformed / partial rows
     return rows
 
@@ -48,19 +54,20 @@ def _drop_warmup(rows, warmup_s: int):
     if not rows or warmup_s <= 0:
         return rows
     start = min(r["t3"] for r in rows)
-    cutoff = start + warmup_s * 1000
+    cutoff = start + warmup_s * 1000 * NS_PER_MS
     return [r for r in rows if r["t3"] >= cutoff]
 
 
-def _summary(name: str, deltas: list[float]) -> None:
-    if not deltas:
+def _summary(name: str, deltas_ns: list[int]) -> None:
+    if not deltas_ns:
         print(f"  {name:<14} (no samples)")
         return
-    deltas_sorted = sorted(deltas)
+    # Convert ns deltas to ms for reporting.
+    deltas = sorted(d / NS_PER_MS for d in deltas_ns)
 
     def pct(p):
-        idx = min(len(deltas_sorted) - 1, int(round(p / 100 * (len(deltas_sorted) - 1))))
-        return deltas_sorted[idx]
+        idx = min(len(deltas) - 1, int(round(p / 100 * (len(deltas) - 1))))
+        return deltas[idx]
 
     print(f"  {name:<14} "
           f"n={len(deltas):<6} "
@@ -99,10 +106,11 @@ def report(path: str, frm: str, to: str, warmup_s: int) -> None:
         _summary(f"{s0}->{s1}", hop)
 
     # Throughput over the observed window (using arrival times).
-    span_ms = max(r["t3"] for r in rows) - min(r["t3"] for r in rows)
-    if span_ms > 0:
-        print(f"\nthroughput: {len(rows) / (span_ms / 1000):.1f} alerts/s "
-              f"over {span_ms / 1000:.1f}s")
+    span_ns = max(r["t3"] for r in rows) - min(r["t3"] for r in rows)
+    if span_ns > 0:
+        span_s = span_ns / 1e9
+        print(f"\nthroughput: {len(rows) / span_s:.1f} alerts/s "
+              f"over {span_s:.1f}s")
 
     # Completeness: (robot_id, t0) is unique per GPS sample. Under at_least_once
     # a record can be re-emitted, so rows >= unique keys.

@@ -3,21 +3,17 @@
 
 Subscribes to robot_geofence_alerts and, for every alert, writes one TSV row:
 
-    robot_id  t0_event_ms  t1_ingest_ms  t2_ksql_ms  t3_arrival_ms
+    robot_id  t0_event_ns  t1_ingest_ns  t2_ksql_ns  t3_arrival_ns
 
-  t0 event   -- GPS header.stamp from the dispatcher        (alert field t0_event_ms)
-  t1 ingest  -- Kafka timestamp (ROWTIME) of the input GNSS record (alert field t1_ingest_ms)
-  t2 ksqlDB  -- wall clock when ksqlDB emitted the alert     (alert field t2_ksql_ms)
-  t3 arrival -- wall clock when this consumer received it    (stamped here)
+  t0 event   -- dispatcher publish time, ns (_ts.t0_ns)     (alert field t0_event_ns)
+  t1 ingest  -- broker ingest of the GNSS record, ns (_ts.t1_ns) (alert field t1_ingest_ns)
+  t2 ksqlDB  -- wall clock when ksqlDB emitted the alert, ns (alert field t2_ksql_ns)
+  t3 arrival -- wall clock when this consumer received it, ns (stamped here)
 
-The (robot_id, t0_event_ms) pair is unique per input GPS sample, so rows can be
-joined/deduplicated across engines (ksqlDB vs GeoFlink vs Nebula).
-
-Note on timestamps: ksqlDB propagates the input record's event time (ROWTIME)
-to the output record, so the alert's *Kafka* timestamp equals t1_ingest_ms — it
-is NOT the alert's produce time. That is why we do not log it as a separate
-column; t2_ksql_ms (UNIX_TIMESTAMP() inside the query) is the real "ksqlDB
-emitted" time.
+The dispatcher stamps t0/t1 in nanoseconds in the `_ts` envelope on
+ros2.fleet.gnss; the geofence query forwards them. t2 is ms-resolution
+(ksqlDB UNIX_TIMESTAMP) scaled to ns. The (robot_id, t0_event_ns) pair is unique
+per input GPS sample, so rows join/dedup across engines.
 
 Uses confluent-kafka (librdkafka) -- the same client as the parent repo's
 consumer/consume.py, and one that ships wheels for modern Python.
@@ -49,8 +45,18 @@ def _handle_sigint(*_):
 signal.signal(signal.SIGINT, _handle_sigint)
 signal.signal(signal.SIGTERM, _handle_sigint)
 
-HEADER = ["robot_id", "t0_event_ms", "t1_ingest_ms",
-          "t2_ksql_ms", "t3_arrival_ms"]
+HEADER = ["robot_id", "t0_event_ns", "t1_ingest_ns",
+          "t2_ksql_ns", "t3_arrival_ns"]
+
+# Fixed-width columns so header and ns values (19 digits) align in any editor.
+# Still whitespace-separated, so calculate_latency.py parses with str.split().
+_W_ID = 18
+_W_TS = 22
+
+
+def _fmt_row(fields: list[str]) -> str:
+    cells = [fields[0].ljust(_W_ID)] + [c.ljust(_W_TS) for c in fields[1:]]
+    return "".join(cells).rstrip()
 
 
 def collect(bootstrap: str, topic: str, seconds: int, out_path: str, n: int) -> None:
@@ -71,7 +77,7 @@ def collect(bootstrap: str, topic: str, seconds: int, out_path: str, n: int) -> 
     count = 0
     deadline = time.time() + seconds
     with open(out_path, "w", encoding="utf-8") as f:
-        f.write("\t".join(HEADER) + "\n")
+        f.write(_fmt_row(HEADER) + "\n")
         while not _stop and time.time() < deadline:
             msg = consumer.poll(timeout=0.5)
             if msg is None:
@@ -82,7 +88,7 @@ def collect(bootstrap: str, topic: str, seconds: int, out_path: str, n: int) -> 
                     print(f"[collect] kafka error: {msg.error()}")
                 continue
 
-            t3_ms = time.time_ns() // 1_000_000
+            t3_ns = time.time_ns()
             try:
                 rec = json.loads(msg.value().decode("utf-8"))
             except Exception:
@@ -93,12 +99,12 @@ def collect(bootstrap: str, topic: str, seconds: int, out_path: str, n: int) -> 
 
             row = [
                 str(rec.get("robot") or rec.get("ROBOT_ID") or ""),
-                str(rec.get("t0_event_ms", "")),
-                str(rec.get("t1_ingest_ms", "")),
-                str(rec.get("t2_ksql_ms", "")),
-                str(t3_ms),
+                str(rec.get("t0_event_ns", "")),
+                str(rec.get("t1_ingest_ns", "")),
+                str(rec.get("t2_ksql_ns", "")),
+                str(t3_ns),
             ]
-            f.write("\t".join(row) + "\n")
+            f.write(_fmt_row(row) + "\n")
             count += 1
             if count % 200 == 0:
                 f.flush()

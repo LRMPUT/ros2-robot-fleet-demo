@@ -45,7 +45,8 @@ CREATE STREAM IF NOT EXISTS fleet_gnss_raw (
   longitude  DOUBLE,
   altitude   DOUBLE,
   position_covariance      ARRAY<DOUBLE>,
-  position_covariance_type INT
+  position_covariance_type INT,
+  `_ts`      STRUCT<t0_ns BIGINT, t1_ns BIGINT>
 ) WITH (
   KAFKA_TOPIC  = 'ros2.fleet.gnss',
   VALUE_FORMAT = 'JSON',
@@ -53,7 +54,9 @@ CREATE STREAM IF NOT EXISTS fleet_gnss_raw (
 );
 
 -- ── Robot gps stream ──────────────────────────────────────────────────────
--- the geofence query reads fleet_gnss_raw directly
+-- DISABLED: the geofence query reads fleet_gnss_raw directly
+-- and derives the timestamp inline, so this intermediate stream is unused.
+-- Re-enable only to restore the two-hop pipeline.
 -- CREATE STREAM IF NOT EXISTS ROS_GPS_FIX_STREAM WITH (
 --   KAFKA_TOPIC  = 'ROS_GPS_FIX_STREAM',
 --   VALUE_FORMAT = 'JSON',
