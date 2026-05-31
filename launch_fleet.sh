@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Define configuration constants
-export N=3
+export N="${N:-3}"
 export BROKER=kafka
 export BAG_PATH="/home/tony/eu/ros2-robot-fleet-demo/bags/rorbots_follower_leader_parcelle_1MONT_ros2"
 

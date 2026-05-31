@@ -223,8 +223,8 @@ def consume_mqtt(host: str, port: int, robot_filter: Optional[set[int]],
 def main() -> None:
     parser = argparse.ArgumentParser(description="Live fleet consumer")
     parser.add_argument("--broker", choices=["kafka", "mqtt"], default="kafka")
-    parser.add_argument("--bootstrap", default="localhost:9092")
-    parser.add_argument("--mqtt-host", default="localhost")
+    parser.add_argument("--bootstrap", default="127.0.0.1:9092")
+    parser.add_argument("--mqtt-host", default="127.0.0.1")
     parser.add_argument("--mqtt-port", type=int, default=1883)
     parser.add_argument("--robots", default=None,
                         help="Comma-separated robot IDs to show (default: all)")
