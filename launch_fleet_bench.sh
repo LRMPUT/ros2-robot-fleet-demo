@@ -26,7 +26,7 @@ set -euo pipefail
 
 export N="${N:-3}"
 export BROKER=kafka
-export BAG_PATH="/home/tony/eu/ros2-robot-fleet-demo/bags/rorbots_follower_leader_parcelle_1MONT_ros2"
+export BAG_PATH="/home/jeanluc/ros2-robot-fleet-demo/bags/rorbots_follower_leader_parcelle_1MONT_ros2/"
 DURATION="${DURATION:-600}"
 WARMUP="${WARMUP:-5}"
 TAIL="${TAIL:-5}"
