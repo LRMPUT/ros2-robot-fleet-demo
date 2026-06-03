@@ -1,0 +1,8 @@
+# Benchmark harness dependencies (host-side).
+#
+# We use confluent-kafka (librdkafka-backed) rather than kafka-python: it ships
+# binary wheels that work on modern Python (3.12/3.13/3.14), whereas
+# kafka-python 2.0.2 imports a vendored `six` that is broken on Python >= 3.12.
+# It is also the same client the parent repo's consumer/consume.py uses.
+confluent-kafka>=2.3.0
+requests>=2.31.0

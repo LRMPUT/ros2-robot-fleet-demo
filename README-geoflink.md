@@ -43,7 +43,7 @@ git add GIS4IoRT-geoflink && git commit -m "bump GIS4IoRT-geoflink"
 
 ```bash
 # Start geoflink + GIS API alongside the Kafka broker (do this first, before the fleet)
-BAG_PATH=/path/to/bag \
+BAG_PATH=/home/purple-panda/Projects/ros2-robot-fleet-demo/bags/rorbots_follower_leader_parcelle_1MONT_ros2 \
 docker compose -f docker-compose.kafka.yml \
                -f docker-compose.geoflink.yml \
                up -d
