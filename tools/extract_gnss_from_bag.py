@@ -2,12 +2,17 @@
 """Extract GNSS trajectories directly from a rosbag2 SQLite3 file.
 
 Reads NavSatFix messages from a single source topic (default:
-/follower/gps/fix), applies a per-robot lat/lon offset matching
-robot_replay.py, and writes one tab-separated file per robot:
+/follower/gps/fix), applies a pre-computed per-robot lat/lon offset that
+tiles robots in a seamless boustrophedon grid (matching the field geometry
+of the INRAE parcelle bag), and writes one tab-separated file per robot:
 
     robot_1_gnss.txt:  timestamp_ns\tlatitude\tlongitude\taltitude
 
 No ROS installation required — decodes CDR binary directly.
+
+Supported fleet sizes with hardcoded geometry-aware offsets: 1, 5, 10, 25, 50.
+The offsets were computed by gen_fleet_offsets.py from the INRAE parcelle bag
+(strip_sp=5.60 m, cell_cross=22.39 m, cell_along=37.72 m).
 
 Usage:
     python3 tools/extract_gnss_from_bag.py --bag bags/my_bag/ --robots 10
@@ -23,15 +28,131 @@ import sqlite3
 import struct
 import sys
 
-# Must match robot_replay.py — perpendicular to field path, fleet centred at id=5.5
-LAT_OFFSET_DEG_PER_ID = 0.00001777
-LON_OFFSET_DEG_PER_ID = 0.00007371
-FLEET_CENTER_ID = 5.5
+# ── per-robot offsets (dlat, dlon) ────────────────────────────────────────────
+# Computed by gen_fleet_offsets.py from bags/rorbots_follower_leader_parcelle_1MONT_ros2/
+# strip_sp=5.60 m  cell_cross=22.39 m  cell_along=37.72 m
+
+# N=1 (1 rows × 1 cols)
+ROBOT_GPS_OFFSETS_1 = {
+     1: (+0.00000000, +0.00000000),  # row=0 col=0
+}
+
+# N=5 (1 rows × 5 cols)
+ROBOT_GPS_OFFSETS_5 = {
+     1: (+0.00000000, +0.00000000),  # row=0 col=0
+     2: (+0.00011511, +0.00023886),  # row=0 col=1
+     3: (+0.00023022, +0.00047772),  # row=0 col=2
+     4: (+0.00034533, +0.00071658),  # row=0 col=3
+     5: (+0.00046044, +0.00095544),  # row=0 col=4
+}
+
+# N=10 (2 rows × 5 cols)
+ROBOT_GPS_OFFSETS_10 = {
+     1: (+0.00000000, +0.00000000),  # row=0 col=0
+     2: (+0.00011511, +0.00023886),  # row=0 col=1
+     3: (+0.00023022, +0.00047772),  # row=0 col=2
+     4: (+0.00034533, +0.00071658),  # row=0 col=3
+     5: (+0.00046044, +0.00095544),  # row=0 col=4
+     6: (-0.00026413, +0.00030751),  # row=1 col=0
+     7: (-0.00014902, +0.00054637),  # row=1 col=1
+     8: (-0.00003391, +0.00078523),  # row=1 col=2
+     9: (+0.00008120, +0.00102409),  # row=1 col=3
+    10: (+0.00019631, +0.00126295),  # row=1 col=4
+}
+
+# N=25 (5 rows × 5 cols)
+ROBOT_GPS_OFFSETS_25 = {
+     1: (+0.00000000, +0.00000000),  # row=0 col=0
+     2: (+0.00011511, +0.00023886),  # row=0 col=1
+     3: (+0.00023022, +0.00047772),  # row=0 col=2
+     4: (+0.00034533, +0.00071658),  # row=0 col=3
+     5: (+0.00046044, +0.00095544),  # row=0 col=4
+     6: (-0.00026413, +0.00030751),  # row=1 col=0
+     7: (-0.00014902, +0.00054637),  # row=1 col=1
+     8: (-0.00003391, +0.00078523),  # row=1 col=2
+     9: (+0.00008120, +0.00102409),  # row=1 col=3
+    10: (+0.00019631, +0.00126295),  # row=1 col=4
+    11: (-0.00052825, +0.00061503),  # row=2 col=0
+    12: (-0.00041314, +0.00085389),  # row=2 col=1
+    13: (-0.00029803, +0.00109274),  # row=2 col=2
+    14: (-0.00018292, +0.00133160),  # row=2 col=3
+    15: (-0.00006781, +0.00157046),  # row=2 col=4
+    16: (-0.00079238, +0.00092254),  # row=3 col=0
+    17: (-0.00067727, +0.00116140),  # row=3 col=1
+    18: (-0.00056216, +0.00140026),  # row=3 col=2
+    19: (-0.00044705, +0.00163912),  # row=3 col=3
+    20: (-0.00033194, +0.00187798),  # row=3 col=4
+    21: (-0.00105651, +0.00123005),  # row=4 col=0
+    22: (-0.00094140, +0.00146891),  # row=4 col=1
+    23: (-0.00082629, +0.00170777),  # row=4 col=2
+    24: (-0.00071118, +0.00194663),  # row=4 col=3
+    25: (-0.00059607, +0.00218549),  # row=4 col=4
+}
+
+# N=50 (5 rows × 10 cols)
+ROBOT_GPS_OFFSETS_50 = {
+     1: (+0.00000000, +0.00000000),  # row=0 col=0
+     2: (+0.00011511, +0.00023886),  # row=0 col=1
+     3: (+0.00023022, +0.00047772),  # row=0 col=2
+     4: (+0.00034533, +0.00071658),  # row=0 col=3
+     5: (+0.00046044, +0.00095544),  # row=0 col=4
+     6: (+0.00057555, +0.00119430),  # row=0 col=5
+     7: (+0.00069066, +0.00143316),  # row=0 col=6
+     8: (+0.00080577, +0.00167201),  # row=0 col=7
+     9: (+0.00092088, +0.00191087),  # row=0 col=8
+    10: (+0.00103599, +0.00214973),  # row=0 col=9
+    11: (-0.00026413, +0.00030751),  # row=1 col=0
+    12: (-0.00014902, +0.00054637),  # row=1 col=1
+    13: (-0.00003391, +0.00078523),  # row=1 col=2
+    14: (+0.00008120, +0.00102409),  # row=1 col=3
+    15: (+0.00019631, +0.00126295),  # row=1 col=4
+    16: (+0.00031142, +0.00150181),  # row=1 col=5
+    17: (+0.00042653, +0.00174067),  # row=1 col=6
+    18: (+0.00054164, +0.00197953),  # row=1 col=7
+    19: (+0.00065675, +0.00221839),  # row=1 col=8
+    20: (+0.00077186, +0.00245725),  # row=1 col=9
+    21: (-0.00052825, +0.00061503),  # row=2 col=0
+    22: (-0.00041314, +0.00085389),  # row=2 col=1
+    23: (-0.00029803, +0.00109274),  # row=2 col=2
+    24: (-0.00018292, +0.00133160),  # row=2 col=3
+    25: (-0.00006781, +0.00157046),  # row=2 col=4
+    26: (+0.00004730, +0.00180932),  # row=2 col=5
+    27: (+0.00016241, +0.00204818),  # row=2 col=6
+    28: (+0.00027752, +0.00228704),  # row=2 col=7
+    29: (+0.00039263, +0.00252590),  # row=2 col=8
+    30: (+0.00050774, +0.00276476),  # row=2 col=9
+    31: (-0.00079238, +0.00092254),  # row=3 col=0
+    32: (-0.00067727, +0.00116140),  # row=3 col=1
+    33: (-0.00056216, +0.00140026),  # row=3 col=2
+    34: (-0.00044705, +0.00163912),  # row=3 col=3
+    35: (-0.00033194, +0.00187798),  # row=3 col=4
+    36: (-0.00021683, +0.00211684),  # row=3 col=5
+    37: (-0.00010172, +0.00235569),  # row=3 col=6
+    38: (+0.00001339, +0.00259455),  # row=3 col=7
+    39: (+0.00012850, +0.00283341),  # row=3 col=8
+    40: (+0.00024361, +0.00307227),  # row=3 col=9
+    41: (-0.00105651, +0.00123005),  # row=4 col=0
+    42: (-0.00094140, +0.00146891),  # row=4 col=1
+    43: (-0.00082629, +0.00170777),  # row=4 col=2
+    44: (-0.00071118, +0.00194663),  # row=4 col=3
+    45: (-0.00059607, +0.00218549),  # row=4 col=4
+    46: (-0.00048096, +0.00242435),  # row=4 col=5
+    47: (-0.00036585, +0.00266321),  # row=4 col=6
+    48: (-0.00025074, +0.00290207),  # row=4 col=7
+    49: (-0.00013563, +0.00314093),  # row=4 col=8
+    50: (-0.00002052, +0.00337979),  # row=4 col=9
+}
+
+OFFSET_TABLES = {
+     1: ROBOT_GPS_OFFSETS_1,
+     5: ROBOT_GPS_OFFSETS_5,
+    10: ROBOT_GPS_OFFSETS_10,
+    25: ROBOT_GPS_OFFSETS_25,
+    50: ROBOT_GPS_OFFSETS_50,
+}
 
 
 # ── CDR NavSatFix decoder ────────────────────────────────────────────────────
-# CDR alignment is measured from the start of the payload (after the 4-byte
-# encapsulation header), not from absolute byte 0.
 
 def _align(abs_off: int, n: int, payload_start: int = 4) -> int:
     rel = abs_off - payload_start
@@ -42,23 +163,17 @@ def _align(abs_off: int, n: int, payload_start: int = 4) -> int:
 def decode_navsatfix_cdr(data: bytes) -> tuple[int, float, float, float] | None:
     """Return (timestamp_ns, lat, lon, alt) or None if decode fails."""
     try:
-        # Encapsulation header (4 bytes), little-endian marker at byte 1
         if data[1] not in (0x01, 0x00):
             return None
 
         sec     = struct.unpack_from('<I', data, 4)[0]
         nanosec = struct.unpack_from('<I', data, 8)[0]
-        flen    = struct.unpack_from('<I', data, 12)[0]   # frame_id length (incl. null)
-        off     = 16 + flen                               # after string bytes
+        flen    = struct.unpack_from('<I', data, 12)[0]
+        off     = 16 + flen
 
-        # NavSatStatus.status (int8)
-        off += 1
-        # NavSatStatus.service (uint16, 2-byte aligned from payload start)
-        off  = _align(off, 2)
-        off += 2
-
-        # latitude/longitude/altitude (float64, 8-byte aligned from payload start)
-        off = _align(off, 8)
+        off += 1                    # NavSatStatus.status (int8)
+        off  = _align(off, 2) + 2  # NavSatStatus.service (uint16)
+        off  = _align(off, 8)      # float64 alignment
         lat, lon, alt = struct.unpack_from('<ddd', data, off)
 
         ts_ns = sec * 1_000_000_000 + nanosec
@@ -118,17 +233,6 @@ def read_navsatfix(db3_path: str, topic_name: str) -> list[tuple[int, float, flo
     return pts
 
 
-# ── robot offset ──────────────────────────────────────────────────────────────
-
-def apply_robot_offset(
-    pts: list[tuple[int, float, float, float]],
-    robot_id: int,
-) -> list[tuple[int, float, float, float]]:
-    dlat = (robot_id - FLEET_CENTER_ID) * LAT_OFFSET_DEG_PER_ID
-    dlon = (robot_id - FLEET_CENTER_ID) * LON_OFFSET_DEG_PER_ID
-    return [(ts, lat + dlat, lon + dlon, alt) for ts, lat, lon, alt in pts]
-
-
 # ── writer ────────────────────────────────────────────────────────────────────
 
 def write_robot_file(
@@ -174,11 +278,21 @@ def main() -> None:
     args = parser.parse_args()
 
     robot_ids = parse_robots(args.robots)
-    db3 = find_db3(args.bag)
+    n = max(robot_ids)
 
+    if n not in OFFSET_TABLES:
+        supported = sorted(OFFSET_TABLES)
+        print(f"ERROR: no offset table for N={n}. Supported fleet sizes: {supported}", file=sys.stderr)
+        print(f"  Run gen_fleet_offsets.py --n {n} to compute and add a new table.", file=sys.stderr)
+        sys.exit(1)
+
+    offsets = OFFSET_TABLES[n]
+
+    db3 = find_db3(args.bag)
     print(f"Bag:    {db3}")
     print(f"Topic:  {args.topic}")
     print(f"Robots: {robot_ids}")
+    print(f"Grid:   {n}-robot table ({n} robots)")
     print(f"Out:    {args.out}/")
     print()
 
@@ -187,7 +301,8 @@ def main() -> None:
     print()
 
     for rid in robot_ids:
-        pts = apply_robot_offset(base_pts, rid)
+        dlat, dlon = offsets[rid]
+        pts = [(ts, lat + dlat, lon + dlon, alt) for ts, lat, lon, alt in base_pts]
         path = write_robot_file(args.out, rid, pts)
         print(f"  robot_{rid}: {len(pts):,} pts → {path}")
 

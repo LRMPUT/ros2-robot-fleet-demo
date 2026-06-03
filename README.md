@@ -41,6 +41,9 @@ N=5 BROKER=mqtt BAG_PATH=/tmp/my_bag_ros2 ./run.sh
 # 5 robots, each with its own Mosquitto broker (edge simulation)
 TOPOLOGY=per-robot N=5 BROKER=mqtt BAG_PATH=/tmp/my_bag_ros2 ./run.sh
 
+# Start fleet and sample one decoded message every 10 s (Ctrl+C to stop)
+N=3 BROKER=mqtt PAYLOAD_FORMAT=json BAG_PATH=/tmp/my_bag_ros2 ./run.sh --echo
+
 # Stop the fleet
 ./run.sh --stop
 ```
@@ -128,6 +131,30 @@ N=5 BROKER=mqtt TOPOLOGY=per-robot ./run.sh --stop
 ```
 
 The default `./run.sh` (no `--stage`) runs both stages back-to-back, same as before.
+
+## Live message echo
+
+Add `--echo` to start the fleet and immediately begin printing one decoded message
+every 10 seconds — useful for a quick sanity-check without a separate terminal:
+
+```bash
+N=3 BROKER=mqtt PAYLOAD_FORMAT=json BAG_PATH=/path/to/bag ./run.sh --echo
+```
+
+Output after fleet startup:
+
+```
+[echo] Sampling live messages every 10s ... (Ctrl+C to stop)
+
+--- 16:08:13 ---
+[robot_  3]  scan        1.4 ms     9.7 KB  ← ros2/robot_3/scan
+
+--- 16:08:24 ---
+[robot_  1]  odom        1.1 ms     1.0 KB  ← ros2/robot_1/odom
+```
+
+Each line shows: robot ID, topic type, end-to-end latency, payload size, and full topic path.
+Ctrl+C stops the echo loop **and** keeps the fleet running. Use `./run.sh --stop` to tear down.
 
 ## Demo consumer
 
@@ -252,6 +279,220 @@ Outputs:
 - `trajectories.html` — interactive Leaflet map (open in browser)
 - `trajectories.png` — 500 dpi satellite map (Esri WorldImagery)
 - `trajectories.pdf` — vector version for publications
+
+### Extract trajectories directly from the bag (no live fleet needed)
+
+If you just want to reproduce or visualise trajectories without running the
+full fleet, extract them straight from the rosbag:
+
+```bash
+pip install pandas geopandas folium contextily matplotlib shapely
+
+python3 tools/extract_gnss_from_bag.py \
+  --bag bags/rorbots_follower_leader_parcelle_1MONT_ros2/ \
+  --robots 1-10 \
+  --out trajectories/
+
+python3 tools/plot_trajectories.py trajectories/
+```
+
+Per-robot offsets are pre-computed from the field geometry (boustrophedon strip
+layout) and hardcoded for standard fleet sizes: **1, 5, 10, 25, 50 robots**.
+Each size tiles robots in a seamless grid — e.g. 25 robots → 5 rows × 5 cols.
+
+```bash
+# 25 robots (5×5 grid)
+python3 tools/extract_gnss_from_bag.py --bag bags/... --robots 1-25 --out traj_25/
+python3 tools/plot_trajectories.py traj_25/
+```
+
+To add a new fleet size, run `gen_fleet_offsets.py` and paste the printed table
+into `extract_gnss_from_bag.py`:
+
+```bash
+python3 tools/gen_fleet_offsets.py --bag bags/rorbots_follower_leader_parcelle_1MONT_ros2/ --n 20
+```
+
+### Extract from an MCAP bag (single robot, no offset tiling)
+
+For MCAP bags (e.g. `rosbag2_2026_04_10-11_01_18`) use the MCAP extractor,
+which reads the bag directly via the `mcap` library — no ROS installation needed:
+
+Install all deps for the local MCAP tools (once):
+
+```bash
+pip install mcap mcap-ros2-support folium paho-mqtt matplotlib numpy contextily pyproj rasterio
+```
+
+**Extract to static HTML map:**
+
+```bash
+python3 tools/extract_gnss_from_mcap.py \
+  --bag bags/rosbag2_2026_04_10-11_01_18/ \
+  --out trajectories_mcap/gnss_trajectory.html \
+  --tsv trajectories_mcap/gnss.tsv
+```
+
+Opens `trajectories_mcap/gnss_trajectory.html` — an interactive Leaflet map
+with the full trajectory (blue polyline, green = start, red = end).
+The TSV (`timestamp_ns / latitude / longitude / altitude`) is compatible with
+`tools/plot_trajectories.py` if you rename it to `robot_1_gnss.txt`.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--bag` | — | Bag directory or `.mcap` file |
+| `--topic` | `/sensing/ins/imu/nav_sat_fix` | NavSatFix topic |
+| `--out` | `trajectories_mcap/gnss_trajectory.html` | Output HTML map |
+| `--tsv` | `trajectories_mcap/gnss.tsv` | Raw TSV (omit to skip) |
+
+**Full live demo (MQTT + consumer echo + matplotlib viz):**
+
+```bash
+# One command starts everything: broker, consumer echo, live OSM viz, bag publisher
+./tools/run_mcap_demo.sh
+
+# Options via env vars
+BAG=bags/rosbag2_2026_04_10-11_01_18 SPEED=2.0 LOOP=--loop ./tools/run_mcap_demo.sh
+```
+
+`live_gnss_viz.py` opens a matplotlib window with an OpenStreetMap background
+(hardcoded extent for the `rosbag2_2026_04_10` bag, Poznań area) and plots each
+incoming point in real-time. The trail fades old→new using the `plasma` colormap.
+
+## Measurements
+
+Every message carries an ordered set of nanosecond wall-clock timestamps so you
+can measure where time goes as it flows through the system. Each component
+stamps its own stage; for JSON payloads the stamps live in a self-contained
+`_ts` envelope that travels with the message:
+
+```json
+{
+  "header": { "stamp": { "sec": 1779985112, "nanosec": 917221721 }, "...": "..." },
+  "latitude": 52.23, "longitude": 16.24,
+  "_ts": { "t0_ns": 1779985112917221721, "t1_ns": 1779985112918002310 }
+}
+```
+
+### Stages
+
+| Stage   | Meaning                              | Stamped by                          | Status |
+|---------|--------------------------------------|-------------------------------------|--------|
+| `t0_ns` | message generated by the dispatcher  | `robot_replay.py` (`header.stamp`)  | live   |
+| `t1_ns` | message reaches the broker (Kafka **and** MQTT) | `kafka_sink` / `mosquitto_sink` at `publish()`/`produce()` | live |
+| `t2_ns` | message consumed                     | `consumer/consume.py` on receive    | live   |
+| `t3_ns` | ingested downstream                  | ksqlDB / GIS4IoRT                   | future |
+
+Both sinks stamp `t1_ns` into the `_ts` envelope at publish time, so `t1` is
+available for **both** brokers. The envelope is forward-compatible: each new
+hop appends its own `t_n` without changing the upstream code. CDR payloads
+cannot carry the envelope — there `t1` is `null` (Kafka falls back to the broker
+`CreateTime`), so use `PAYLOAD_FORMAT=json` when you need broker-agnostic stages.
+
+### Derived metrics
+
+From the stages the analyzer computes, per message type and pooled per run:
+
+| Metric            | Formula      | What it tells you                          |
+|-------------------|--------------|--------------------------------------------|
+| end-to-end (e2e)  | `t2 − t0`    | total latency from generation to consume   |
+| `ingest`          | `t1 − t0`    | dispatcher serialize + handoff to broker   |
+| `transport`       | `t2 − t1`    | broker queueing + network to the consumer  |
+| throughput        | count / window | messages per second per stream           |
+| delivery rate     | received / expected | fraction of published messages received |
+
+Because `t0` and `t1` are now stamped by the same dispatcher process clock, the
+`ingest`/`transport` split is clock-skew-free (earlier the Kafka `CreateTime`
+path could show small negative ingest values).
+
+### How to use them
+
+1. **Capture** a run (see [Latency capture](#latency-capture)) — writes
+   `consumer.jsonl` + `publisher/*.jsonl` to `latency_artifacts/<run>/`.
+2. **Inspect** one run: `python3 tools/analyze_latency.py latency_artifacts/<run>/`
+   prints broker, robot count, delivery, pooled e2e percentiles, and a
+   per-stream table with `ingest`/`transport` columns.
+3. **Aggregate + tabulate** many runs into CSV and a LaTeX table (see
+   [CSV export and paper table](#csv-export-and-paper-table)).
+4. **Post-process raw** in Python when you need custom plots:
+   ```python
+   import pandas as pd
+   df = pd.read_json("latency_artifacts/<run>/consumer.jsonl", lines=True)
+   df["e2e_ms"]       = (df.t2_ns - df.t0_ns) / 1e6
+   df["ingest_ms"]    = (df.t1_ns - df.t0_ns) / 1e6   # null for CDR
+   df["transport_ms"] = (df.t2_ns - df.t1_ns) / 1e6
+   print(df.groupby("suffix")[["e2e_ms", "ingest_ms", "transport_ms"]].median())
+   ```
+
+## Latency capture
+
+Record per-message end-to-end latency (ROS publish → broker → consumer) to
+JSONL and summarize it. Latency is `t2_ns − header.stamp`, where each robot
+stamps `header.stamp = time.time_ns()` at publish time.
+
+```bash
+# 0. Build the consumer image once
+docker build -t ros2-fleet-consumer -f consumer/Dockerfile .
+
+# 1. Run a 60 s capture with 10 robots on Kafka
+BAG_PATH=bags/rorbots_follower_leader_parcelle_1MONT_ros2 \
+    N=10 BROKER=kafka DURATION=60 ./tools/run_latency_capture.sh
+
+# 2. Analyze the artifacts the run prints the path to
+python3 tools/analyze_latency.py latency_artifacts/<run>/
+```
+
+Artifacts written to `latency_artifacts/<timestamp>/`:
+
+| File | Contents |
+|------|----------|
+| `consumer.jsonl` | one record per received message: `robot_id, suffix, topic, t0_ns (publish), t1_ns (broker-ingress), t2_ns (consume), latency_ns (e2e), payload_bytes` |
+| `publisher/publisher_robot_<id>.jsonl` | one record per published message: `robot_id, suffix, topic, t0_ns` |
+
+`analyze_latency.py` joins the two sides on the `(robot_id, suffix, t0_ns)`
+set — so MQTT QoS-1 duplicate deliveries do not inflate the match count — and
+prints per-stream p50/p95/p99/max latency, throughput, and drop rate.
+It also reports two stage columns — `ingest` (`t0`→`t1`, publish→broker) and
+`transport` (`t1`→`t2`, broker→consumer) — derived from `t1_ns`. Both the
+`mosquitto_sink` and `kafka_sink` stamp `t1_ns` at publish time into a JSON
+`_ts` envelope (`{t0_ns, t1_ns}`) carried with the message, so the stage
+columns populate for **both** brokers. The envelope is forward-compatible:
+downstream components (consumer = `t2`, ksqlDB/GIS4IoRT = `t3`) append their
+own stamps. CDR payloads cannot carry the envelope, so `t1_ns` shows `n/a`
+there (Kafka still falls back to the broker `CreateTime`).
+
+The orchestrator runs the 3-stage flow (brokers → consumer → robots) so the
+consumer never misses early messages, captures for `DURATION` seconds, then
+tears the fleet down (also on Ctrl+C).
+
+### CSV export and paper table
+
+`analyze_latency.py --csv` writes a machine-readable summary: one `level=run`
+aggregate row per capture (broker, robot count, received, expected, delivery %,
+pooled avg/p50/p95/p99) plus per-suffix detail rows. Broker is derived from the
+consumer topic (`.` = Kafka, `/` = MQTT) and robot count from the publisher
+files — no extra metadata needed.
+
+```bash
+# Aggregate every capture into one CSV (--append, header written once)
+rm -f results.csv
+for d in latency_artifacts/*/; do
+    python3 tools/analyze_latency.py "$d" --csv results.csv --append --quiet
+done
+```
+
+`make_paper_table.py` then renders the `level=run` rows into the LaTeX template
+`table_templete.txt` (Kafka rows first, then MQTT, each sorted by robot count)
+and writes `table_results.txt`:
+
+```bash
+python3 tools/make_paper_table.py --csv results.csv --out table_results.txt
+```
+
+`Delivery = min(100, received/expected×100)` — clamped because MQTT QoS-1
+duplicate deliveries can push received above expected. The template's caption,
+column header, and booktabs rules are preserved; only the `%%ROWS%%` body is
+replaced.
 
 ## Decoding CDR in Python
 

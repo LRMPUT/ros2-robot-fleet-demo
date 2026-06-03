@@ -1,0 +1,14 @@
+# Local tools dependencies (MCAP extraction, live viz, MQTT publisher)
+# No ROS installation required.
+#
+# Install:
+#   pip install -r tools/requirements.txt
+mcap>=1.1.0
+mcap-ros2-support>=0.4.0
+folium>=0.14.0
+paho-mqtt>=1.6.0
+matplotlib>=3.7.0
+numpy>=1.24.0
+contextily>=1.3.0
+pyproj>=3.5.0
+rasterio>=1.3.0
