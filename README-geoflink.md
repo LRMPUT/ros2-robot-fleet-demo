@@ -43,8 +43,18 @@ git add GIS4IoRT-geoflink && git commit -m "bump GIS4IoRT-geoflink"
 
 ```bash
 # Start geoflink + GIS API alongside the Kafka broker (do this first, before the fleet)
-BAG_PATH=/bags/path \
+BAG_PATH=/home/purple-panda/Projects/ros2-robot-fleet-demo/bags/rorbots_follower_leader_parcelle_1MONT_ros2 \
 docker compose -f docker-compose.kafka.yml \
                -f docker-compose.geoflink.yml \
                up -d
 ```
+
+## Benchmarking
+
+In order to run the tests:
+- Start the geoflink stack + robot fleet
+- Navigate to benchmarks directory `cd benchmarks`
+- (Just once) Create a virtual enviroment `python -m venv .venv`
+- Enter the virtual environment `source .venv/bin/activate`
+- (Just once) Install dependencies `pip install -r requirements.txt`
+- Run the test as `python run_benchmark.py --robots <num_robots> --seconds <seconds>`
