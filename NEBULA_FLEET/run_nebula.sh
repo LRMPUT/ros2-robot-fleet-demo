@@ -155,8 +155,8 @@ RUN gradle shadowJar --no-daemon
 FROM eclipse-temurin:17-jre
 WORKDIR /app
 COPY --from=builder /app/build/libs/*-all.jar /app/geofence.jar
-COPY config/1_MONT.txt /app/1_MONT.txt
-ENTRYPOINT ["java", "-jar", "/app/geofence.jar", "/app/1_MONT.txt"]
+COPY config/3_MONT.txt /app/3_MONT.txt
+ENTRYPOINT ["java", "-jar", "/app/geofence.jar", "/app/3_MONT.txt"]
 EOF
 
 cat << 'EOF' > "${CONFIG_DIR}/Dockerfile.logger"
@@ -210,7 +210,7 @@ services:
       - --logLevel=${LOG_LEVEL}
       - --configPath=/config/nes_coordinator_config.yml
     env_file: ${ENV_FILE}
-  
+
   python_logger:
     build:
       context: .
@@ -219,7 +219,7 @@ services:
     volumes:
       - ./scripts:/scripts
       - ./logs:/logs
-    command: [ "python", "/scripts/logger.py", "${QUERY_HOST_IP}", "${MQTT_BASE_PORT}" ]
+    command: [ "python", "/scripts/logger.py", "${QUERY_HOST_IP}", "${MQTT_BASE_PORT}", "${N}" ]
     env_file: ${ENV_FILE}
 EOF
 

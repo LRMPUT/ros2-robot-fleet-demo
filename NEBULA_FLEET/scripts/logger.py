@@ -4,15 +4,16 @@ import json
 import sys
 import os
 
-if len(sys.argv) < 3:
-    print("Usage: python script.py <BROKER_IP> <PORT>")
+if len(sys.argv) < 4:
+    print("Usage: python logger.py <BROKER_IP> <PORT> <N>")
     sys.exit(1)
 
 BROKER_IP = sys.argv[1]
 PORT = int(sys.argv[2])
+N_ROBOTS = sys.argv[3]
 TOPIC = "geofence"
 LOG_DIR = "/logs"
-LOG_FILE = os.path.join(LOG_DIR, "timestamps.txt")
+LOG_FILE = os.path.join(LOG_DIR, f"timestamps_{N_ROBOTS}.txt")
 
 os.makedirs(LOG_DIR, exist_ok=True)
 
@@ -44,10 +45,10 @@ def on_message(client, userdata, msg):
             file.write(log_line)
             
         print(f"Logged payload from: {robot_id}", flush=True)
-    except json.JSONDecodeError as e:
-        print(f"JSON decoding error: {e}", flush=True)
-    except Exception as e:
-        print(f"Error processing message: {e}", flush=True)
+    except json.JSONDecodeError as parse_error:
+        print(f"JSON decoding error: {parse_error}", flush=True)
+    except Exception as generic_error:
+        print(f"Error processing message: {generic_error}", flush=True)
 
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="geofence_listener")
 
@@ -59,7 +60,7 @@ try:
     client.loop_forever()
 except KeyboardInterrupt:
     print("Stopping listener...")
-except Exception as e:
-    print(f"Connection error: {e}")
+except Exception as connection_error:
+    print(f"Connection error: {connection_error}")
 finally:
     client.disconnect()
