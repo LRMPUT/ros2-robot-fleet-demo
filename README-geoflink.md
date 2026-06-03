@@ -43,7 +43,7 @@ git add GIS4IoRT-geoflink && git commit -m "bump GIS4IoRT-geoflink"
 
 ```bash
 # Start geoflink + GIS API alongside the Kafka broker (do this first, before the fleet)
-BAG_PATH=/path/to/bag \
+BAG_PATH=/bags/path \
 docker compose -f docker-compose.kafka.yml \
                -f docker-compose.geoflink.yml \
                up -d
