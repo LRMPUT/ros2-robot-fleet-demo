@@ -15,6 +15,8 @@ logicalSources:
         type: INT16
       - name: status
         type: TEXT
+      - name: _ts
+        type: TEXT
   - logicalSourceName: odom
     fields:
       - name: child_frame_id
@@ -24,6 +26,8 @@ logicalSources:
       - name: pose
         type: TEXT
       - name: twist
+        type: TEXT
+      - name: _ts
         type: TEXT
   - logicalSourceName: scan
     fields:
@@ -47,6 +51,8 @@ logicalSources:
         type: FLOAT32
       - name: time_increment
         type: FLOAT32
+      - name: _ts
+        type: TEXT
   - logicalSourceName: points
     fields:
       - name: data
@@ -67,3 +73,5 @@ logicalSources:
         type: INT64
       - name: width
         type: INT64
+      - name: _ts
+        type: TEXT

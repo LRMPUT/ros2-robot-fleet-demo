@@ -59,9 +59,11 @@ finally:
 | `gnss$longitude` | double | Longitude in degrees |
 | `gnss$position_covariance` | String | Pose covariance matrix (in ENU), stored as a string of double array |
 | `gnss$position_covariance_type` | short | Method of covariance estimation |
-| `gnss$processing_timestamp` | long | Processing end timestamp |
 | `gnss$status_service` | int | Supported satellite services |
 | `gnss$status_status` | byte | Satellite fix status |
+| `gnss$gnss$t0_ns` | String | t0_ns time (as String) |
+| `gnss$gnss$t1_ns` | String | t1_ns time (as String) |
+| `gnss$gnss$t2_ns` | String | t2_ns time (as String) |
 
 **Example:**
 ```json
