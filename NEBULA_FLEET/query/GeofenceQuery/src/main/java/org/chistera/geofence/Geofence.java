@@ -20,19 +20,22 @@ public class Geofence {
         public String position_covariance;
         public short position_covariance_type;
         public String status;
+        public String _ts;
     }
 
     public static class GeofenceOutput {
         public double altitude;
         public String header_frame_id;
-        public long header_stamp_nanosec;
-        public int header_stamp_sec;
+        public String header_stamp_nanosec;
+        public String header_stamp_sec;
         public double latitude;
         public double longitude;
         public String position_covariance;
         public short position_covariance_type;
         public int status_service;
         public byte status_status;
+        public String t0_ns;
+        public String t1_ns;
         public boolean exited;
     }
 
@@ -42,6 +45,8 @@ public class Geofence {
         private static final Pattern SEC_PATTERN = Pattern.compile("\"sec\":(-?\\d+)");
         private static final Pattern SERVICE_PATTERN = Pattern.compile("\"service\":(-?\\d+)");
         private static final Pattern STATUS_PATTERN = Pattern.compile("\"status\":(-?\\d+)");
+        private static final Pattern T0_NS_PATTERN = Pattern.compile("\"t0_ns\":(-?\\d+)");
+        private static final Pattern T1_NS_PATTERN = Pattern.compile("\"t1_ns\":(-?\\d+)");
 
         private String wkbHex;
         private transient Geometry polygon;
@@ -89,8 +94,8 @@ public class Geofence {
             output.position_covariance = input.position_covariance;
             output.position_covariance_type = input.position_covariance_type;
             output.header_frame_id = null;
-            output.header_stamp_nanosec = 0L;
-            output.header_stamp_sec = 0;
+            output.header_stamp_nanosec = "0";
+            output.header_stamp_sec = "0";
 
             if (input.header != null) {
                 Matcher frameMatcher = FRAME_ID_PATTERN.matcher(input.header);
@@ -99,11 +104,11 @@ public class Geofence {
                 }
                 Matcher nanoMatcher = NANOSEC_PATTERN.matcher(input.header);
                 if (nanoMatcher.find()) {
-                    output.header_stamp_nanosec = Long.parseLong(nanoMatcher.group(1));
+                    output.header_stamp_nanosec = nanoMatcher.group(1);
                 }
                 Matcher secMatcher = SEC_PATTERN.matcher(input.header);
                 if (secMatcher.find()) {
-                    output.header_stamp_sec = Integer.parseInt(secMatcher.group(1));
+                    output.header_stamp_sec = secMatcher.group(1);
                 }
             }
 
@@ -118,6 +123,21 @@ public class Geofence {
                 Matcher statusMatcher = STATUS_PATTERN.matcher(input.status);
                 if (statusMatcher.find()) {
                     output.status_status = Byte.parseByte(statusMatcher.group(1));
+                }
+            }
+
+            output.t0_ns = "0";
+            output.t1_ns = "0";
+
+            if (input._ts != null) {
+                Matcher t0Matcher = T0_NS_PATTERN.matcher(input._ts);
+                if (t0Matcher.find()) {
+                    output.t0_ns = t0Matcher.group(1);
+                }
+                
+                Matcher t1Matcher = T1_NS_PATTERN.matcher(input._ts);
+                if (t1Matcher.find()) {
+                    output.t1_ns = t1Matcher.group(1);
                 }
             }
 

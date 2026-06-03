@@ -18,7 +18,7 @@ os.makedirs(LOG_DIR, exist_ok=True)
 
 if not os.path.exists(LOG_FILE) or os.path.getsize(LOG_FILE) == 0:
     with open(LOG_FILE, "w") as file:
-        file.write("robot_id\tmessage_ts_sec\tmessage_ts_nanosec\tprocessing_ts\tarrival_ts\n")
+        file.write("robot_id\tt0_ns\tt1_ns\tt2_ns\tt3_ns\n")
 
 def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
@@ -34,9 +34,9 @@ def on_message(client, userdata, msg):
         data = json.loads(payload_str)
         
         robot_id = data.get("gnss$header_frame_id", "")
-        msg_ts_sec = data.get("gnss$header_stamp_sec", "")
-        msg_ts_ns = data.get("gnss$header_stamp_nanosec", "")
-        proc_ts = data.get("gnss$processing_timestamp", "")
+        msg_ts_sec = data.get("gnss$t0_ns", "").strip('"')
+        msg_ts_ns = data.get("gnss$t1_ns", "").strip('"')
+        proc_ts = data.get("gnss$t2_ns", "").strip('"')
         
         log_line = f"{robot_id}\t{msg_ts_sec}\t{msg_ts_ns}\t{proc_ts}\t{arrival_ts}\n"
         

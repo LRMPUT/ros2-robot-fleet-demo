@@ -11,12 +11,12 @@ services:
     network_mode: host
     env_file: .env
 
-  copy_queries:
-    build:
-      context: .
-      dockerfile: config/Dockerfile.copy
-    network_mode: host
-    env_file: .env
+  # copy_queries:
+  #   build:
+  #     context: .
+  #     dockerfile: config/Dockerfile.copy
+  #   network_mode: host
+  #   env_file: .env
 
   geofence_query:
     build:
@@ -72,4 +72,34 @@ services:
     command:
       - nesWorker
       - --configPath=/config/nes_worker_2_config.yml
+    env_file: .env
+
+  nes_worker_3:
+    image: nebulastream/nes-executable-image:latest
+    network_mode: host
+    volumes:
+      - ./config:/config
+    command:
+      - nesWorker
+      - --configPath=/config/nes_worker_3_config.yml
+    env_file: .env
+
+  nes_worker_4:
+    image: nebulastream/nes-executable-image:latest
+    network_mode: host
+    volumes:
+      - ./config:/config
+    command:
+      - nesWorker
+      - --configPath=/config/nes_worker_4_config.yml
+    env_file: .env
+
+  nes_worker_5:
+    image: nebulastream/nes-executable-image:latest
+    network_mode: host
+    volumes:
+      - ./config:/config
+    command:
+      - nesWorker
+      - --configPath=/config/nes_worker_5_config.yml
     env_file: .env

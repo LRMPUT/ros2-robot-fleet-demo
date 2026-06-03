@@ -68,6 +68,8 @@ logicalSources:
         type: INT16
       - name: status
         type: TEXT
+      - name: _ts
+        type: TEXT
   - logicalSourceName: odom
     fields:
       - name: child_frame_id
@@ -77,6 +79,8 @@ logicalSources:
       - name: pose
         type: TEXT
       - name: twist
+        type: TEXT
+      - name: _ts
         type: TEXT
   - logicalSourceName: scan
     fields:
@@ -100,6 +104,8 @@ logicalSources:
         type: FLOAT32
       - name: time_increment
         type: FLOAT32
+      - name: _ts
+        type: TEXT
   - logicalSourceName: points
     fields:
       - name: data
@@ -120,21 +126,23 @@ logicalSources:
         type: INT64
       - name: width
         type: INT64
+      - name: _ts
+        type: TEXT
 EOF
 
-cat << 'EOF' > "${CONFIG_DIR}/Dockerfile.copy"
-FROM gradle:8.5-jdk17 AS builder
-WORKDIR /app
-COPY query/CopyQueries/settings.gradle.kts query/CopyQueries/build.gradle.kts ./
-RUN gradle shadowJar --no-daemon || true
-COPY query/CopyQueries/src ./src
-RUN gradle shadowJar --no-daemon
+# cat << 'EOF' > "${CONFIG_DIR}/Dockerfile.copy"
+# FROM gradle:8.5-jdk17 AS builder
+# WORKDIR /app
+# COPY query/CopyQueries/settings.gradle.kts query/CopyQueries/build.gradle.kts ./
+# RUN gradle shadowJar --no-daemon || true
+# COPY query/CopyQueries/src ./src
+# RUN gradle shadowJar --no-daemon
 
-FROM eclipse-temurin:17-jre
-WORKDIR /app
-COPY --from=builder /app/build/libs/*-all.jar /app/queries.jar
-ENTRYPOINT ["java", "-jar", "/app/queries.jar"]
-EOF
+# FROM eclipse-temurin:17-jre
+# WORKDIR /app
+# COPY --from=builder /app/build/libs/*-all.jar /app/queries.jar
+# ENTRYPOINT ["java", "-jar", "/app/queries.jar"]
+# EOF
 
 cat << 'EOF' > "${CONFIG_DIR}/Dockerfile.geofence"
 FROM gradle:8.5-jdk17 AS builder
@@ -171,12 +179,12 @@ services:
     network_mode: host
     env_file: ${ENV_FILE}
 
-  copy_queries:
-    build:
-      context: .
-      dockerfile: ${CONFIG_DIR}/Dockerfile.copy
-    network_mode: host
-    env_file: ${ENV_FILE}
+  # copy_queries:
+  #   build:
+  #     context: .
+  #     dockerfile: ${CONFIG_DIR}/Dockerfile.copy
+  #   network_mode: host
+  #   env_file: ${ENV_FILE}
 
   geofence_query:
     build:
