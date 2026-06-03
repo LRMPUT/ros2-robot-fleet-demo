@@ -3,16 +3,16 @@
 
 Subscribes to robot_geofence_alerts and, for every alert, writes one TSV row:
 
-    robot_id  t0_event_ns  t1_ingest_ns  t2_ksql_ns  t3_arrival_ns
+    robot_id  ts_0  ts_1  ts_2  ts_3
 
-  t0 event   -- dispatcher publish time, ns (_ts.t0_ns)     (alert field t0_event_ns)
-  t1 ingest  -- broker ingest of the GNSS record, ns (_ts.t1_ns) (alert field t1_ingest_ns)
-  t2 ksqlDB  -- wall clock when ksqlDB emitted the alert, ns (alert field t2_ksql_ns)
+  t0 event   -- dispatcher publish time, ns (_ts.t0_ns)     (alert field ts_0)
+  t1 ingest  -- broker ingest of the GNSS record, ns (_ts.t1_ns) (alert field ts_1)
+  t2 geoflink  -- wall clock when geoflink emitted the alert, ns (alert field ts_2)
   t3 arrival -- wall clock when this consumer received it, ns (stamped here)
 
 The dispatcher stamps t0/t1 in nanoseconds in the `_ts` envelope on
 ros2.fleet.gnss; the geofence query forwards them. t2 is ms-resolution
-(ksqlDB UNIX_TIMESTAMP) scaled to ns. The (robot_id, t0_event_ns) pair is unique
+(geoflink UNIX_TIMESTAMP) scaled to ns. The (robot_id, ts_0) pair is unique
 per input GPS sample, so rows join/dedup across engines.
 
 Uses confluent-kafka (librdkafka) -- the same client as the parent repo's

@@ -5,7 +5,7 @@ Reports count / avg / P50 / P95 / P99 / min / max / std for a chosen stage
 pair, plus the breakdown of each consecutive hop. Mirrors the GeoFlink
 benchmark's calculate_latency output so the numbers line up side by side.
 
-Stages: t0 (event) -> t1 (ingest) -> t2 (ksqlDB) -> t3 (arrival). Timestamps in
+Stages: t0 (event) -> t1 (ingest) -> t2 (geoflink) -> t3 (arrival). Timestamps in
 the file are nanoseconds (t0/t1 from the dispatcher `_ts` envelope); all
 reported deltas are converted to milliseconds.
 

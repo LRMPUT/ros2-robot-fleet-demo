@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One-command orchestrator: setup -> settle -> collect -> stats for a single N.
 
-Start the fleet (launch_fleet.sh) first, then run this. See README-benchmarks.md.
+Start the fleet (launch_fleet.sh) first, then run this. See README-geoflink.md.
 
 The "settle" step lets the new geofence queries reach steady state before the
 collector takes its `latest` offset, so only live alerts are measured.

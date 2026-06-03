@@ -1,6 +1,6 @@
 """Single source of truth for the geoflink geofence latency benchmark.
 
-Mirrors the GeoFlink benchmark layout so the two stacks can be compared
+Mirrors the ksqlDB benchmark layout so the two stacks can be compared
 apples-to-apples. Override the most common knobs from the CLI of each script
 (see --help); everything else lives here.
 
