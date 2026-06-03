@@ -147,12 +147,12 @@ trap cleanup EXIT
 
 # 2. Wait for the sink lifecycle service, then configure + activate with retries.
 echo "[edge] waiting for /${NODE_NAME} lifecycle to stabilize..."
-for i in {1..15}; do
+for i in {1..45}; do
     if ros2 lifecycle set "${NODE_NAME}" configure >/dev/null 2>&1; then
         echo "[edge] /${NODE_NAME} configured successfully."
         break
     fi
-    echo "    [edge] Node discovery lagging under high CPU load, retrying in 1s... ($i/15)"
+    echo "    [edge] Node discovery lagging under high CPU load, retrying in 1s... ($i/45)"
     sleep 1
 done
 

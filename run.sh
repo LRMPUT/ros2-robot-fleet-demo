@@ -31,7 +31,7 @@ cd "${SCRIPT_DIR}"
 
 N="${N:-10}"
 BROKER="${BROKER:-kafka}"
-MSG_TYPE="${MSG_TYPE:-multi}"
+MSG_TYPE="${MSG_TYPE:-navsatfix}"
 RATE_HZ="${RATE_HZ:-10}"
 if [[ "${BROKER}" == "mqtt" ]]; then
     FLEET_ROUTING="${FLEET_ROUTING:-0}"
