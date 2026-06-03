@@ -12,7 +12,7 @@ reported deltas are converted to milliseconds.
 Usage:
     python calculate_latency.py results/run_10.txt
     python calculate_latency.py results/run_10.txt --from t0 --to t3
-    python calculate_latency.py results/run_50.txt --warmup 5
+    python calculate_latency.py results/run_50.txt --warmup 5 --tail 15
 """
 from __future__ import annotations
 
@@ -58,6 +58,15 @@ def _drop_warmup(rows, warmup_s: int):
     return [r for r in rows if r["t3"] >= cutoff]
 
 
+def _drop_tail(rows, tail_s: int):
+    """Drop rows whose arrival (t3) is within tail_s of the last arrival."""
+    if not rows or tail_s <= 0:
+        return rows
+    end = max(r["t3"] for r in rows)
+    cutoff = end - tail_s * 1000 * NS_PER_MS
+    return [r for r in rows if r["t3"] <= cutoff]
+
+
 def _summary(name: str, deltas_ns: list[int]) -> None:
     if not deltas_ns:
         print(f"  {name:<14} (no samples)")
@@ -80,13 +89,16 @@ def _summary(name: str, deltas_ns: list[int]) -> None:
           f"std={(stats.pstdev(deltas) if len(deltas) > 1 else 0.0):8.2f}  (ms)")
 
 
-def report(path: str, frm: str, to: str, warmup_s: int) -> None:
+def report(path: str, frm: str, to: str, warmup_s: int, tail_s: int) -> None:
     rows = _load(path)
     total = len(rows)
+    
+    # Nakładamy oba filtry sekwencyjnie
     rows = _drop_warmup(rows, warmup_s)
+    rows = _drop_tail(rows, tail_s)
 
     print(f"\n=== latency report: {path} ===")
-    print(f"rows={total}  after warmup({warmup_s}s)={len(rows)}\n")
+    print(f"rows={total}  after warmup({warmup_s}s) & tail({tail_s}s)={len(rows)}\n")
 
     if not rows:
         print("no rows to analyze.")
@@ -130,10 +142,12 @@ def main() -> None:
     p.add_argument("--to", dest="to", choices=ORDER, default="t3")
     p.add_argument("--warmup", type=int, default=config.WARMUP_SECONDS,
                    help=f"seconds to drop from the start (default {config.WARMUP_SECONDS})")
+    p.add_argument("--tail", type=int, default=0,
+                   help="seconds to drop from the end to avoid shutdown spikes (default 0)")
     args = p.parse_args()
     if ORDER.index(args.frm) >= ORDER.index(args.to):
         p.error("--from must be an earlier stage than --to")
-    report(args.path, args.frm, args.to, args.warmup)
+    report(args.path, args.frm, args.to, args.warmup, args.tail)
 
 
 if __name__ == "__main__":

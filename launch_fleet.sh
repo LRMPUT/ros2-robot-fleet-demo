@@ -40,7 +40,12 @@ for topic in ros2.fleet.gnss ros2.fleet.odom ros2.fleet.scan ros2.fleet.points; 
 done
 
 # 5. Restart the init service to execute SQL statements cleanly against the ready infrastructure
-echo "[5/5] Running ksqlDB schema definitions..."
+echo "[5/5] Waiting for ksqlDB server to heal..."
+until curl -s http://localhost:8088/healthcheck >/dev/null 2>&1; do
+    sleep 2
+done
+
+echo "    ksqlDB server ready. Running ksqlDB schema definitions..."
 docker restart ros2-robot-fleet-demo-ksqldb-init-1
 
 echo ""
