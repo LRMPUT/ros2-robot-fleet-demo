@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Konfiguracja globalna całej serii testowej
-export DURATION=60
+export DURATION=600
 export STOP_AFTER=1
 
 # Definicja wielkości flot do przetestowania
