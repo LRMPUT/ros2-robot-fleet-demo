@@ -105,7 +105,7 @@ $(printf '%s\n' "${SUBS_YAML}" | sed 's/^/      /')
     kafka.drop_when_full: true
     kafka.strict_startup: false
     kafka.acks: "1"
-    kafka.linger_ms: 0
+    #kafka.linger_ms: 0
     metrics.enabled: false
 EOF
         ;;
