@@ -1,0 +1,12 @@
+aiokafka==0.12.0
+fastapi==0.124.4
+httpx==0.28.1
+pydantic==2.12.5
+pydantic-settings==2.12.0
+uvicorn==0.38.0
+websockets==15.0.1
+
+# ROSbag (historical endpoint)
+numpy==1.24.3
+shapely==2.0.2
+rosbags==0.10.5

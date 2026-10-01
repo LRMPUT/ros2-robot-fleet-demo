@@ -1,0 +1,12 @@
+FROM gradle:8.5-jdk17 AS builder
+WORKDIR /app
+COPY query/GeofenceQuery/settings.gradle.kts query/GeofenceQuery/build.gradle.kts ./
+RUN gradle shadowJar --no-daemon || true
+COPY query/GeofenceQuery/src ./src
+RUN gradle shadowJar --no-daemon
+
+FROM eclipse-temurin:17-jre
+WORKDIR /app
+COPY --from=builder /app/build/libs/*-all.jar /app/geofence.jar
+COPY config/1_MONT.txt /app/1_MONT.txt
+ENTRYPOINT ["java", "-jar", "/app/geofence.jar", "/app/1_MONT.txt"]
