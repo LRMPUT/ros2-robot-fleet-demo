@@ -1,0 +1,13 @@
+services:
+  broker:
+    image: eclipse-mosquitto:2.0
+    ports:
+      # Localhost-only lab default (do not expose brokers on the LAN).
+      - "127.0.0.1:1883:1883"
+    volumes:
+      - ./mosquitto.lab.conf:/mosquitto/config/mosquitto.conf:ro
+    healthcheck:
+      test: ["CMD", "mosquitto_pub", "-h", "localhost", "-t", "_health", "-n", "-q", "0"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
