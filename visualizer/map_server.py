@@ -289,6 +289,11 @@ def main() -> None:
     parser.add_argument("--mqtt-port", type=int, default=1883)
     parser.add_argument("--format", choices=["json", "cdr", "auto"], default="auto")
     parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument(
+        "--host", default="127.0.0.1",
+        help="Bind address (default 127.0.0.1 for localhost-only lab use; "
+             "use 0.0.0.0 only inside Docker bridge networking)",
+    )
     args = parser.parse_args()
 
     if args.broker == "kafka":
@@ -303,8 +308,8 @@ def main() -> None:
     t.start()
 
     app.config["BROKER_LABEL"] = label
-    print(f"Map server ready → http://localhost:{args.port}   broker={label}")
-    app.run(host="0.0.0.0", port=args.port, threaded=True)
+    print(f"Map server ready → http://{args.host}:{args.port}   broker={label}")
+    app.run(host=args.host, port=args.port, threaded=True)
 
 
 if __name__ == "__main__":
