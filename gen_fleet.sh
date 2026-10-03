@@ -78,6 +78,7 @@ EOF
     ipc: host
     environment:
       ROBOT_ID: "${i}"
+      NUM_ROBOTS: "${N}"
       BAG_PATH: "/data/bag"
       RATE_HZ: "${RATE_HZ}"
       MSG_TYPE: "${MSG_TYPE}"
@@ -103,6 +104,7 @@ EOF
     ipc: host
     environment:
       ROBOT_ID: "${i}"
+      NUM_ROBOTS: "${N}"
       BAG_PATH: "/data/bag"
       RATE_HZ: "${RATE_HZ}"
       MSG_TYPE: "${MSG_TYPE}"

@@ -56,11 +56,17 @@ class PublisherLatencyLogger:
 
 # Per-robot GPS offset — perpendicular to the field's main travel direction
 # (PCA on the INRAE parcelle bag: main axis ~NNW, perp axis ~ENE).
-# Robots 1..10 are centred around the base track: offset = (id - 5.5) * step.
-# Step size ≈ 6 m, giving ~54 m total spread with no trajectory crossings.
+# Step size ≈ 6 m. Centre is the midpoint of robots 1..N (see fleet_center_id).
 LAT_OFFSET_DEG_PER_ID = 0.00001777   # northing component (~1.98 m/step)
 LON_OFFSET_DEG_PER_ID = 0.00007371   # easting  component (~5.72 m/step)
-FLEET_CENTER_ID = 5.5                 # centre of robots 1..10
+
+
+def fleet_center_id(num_robots: int | None = None) -> float:
+    """Midpoint of robot IDs 1..N so the fleet stays centred for any N."""
+    if num_robots is None:
+        num_robots = int(os.environ.get("NUM_ROBOTS", "0")) or 10
+    n = max(int(num_robots), 1)
+    return (n + 1) / 2.0
 
 
 # Maps the short MSG_TYPE env value (set by orchestrator) to:
@@ -78,27 +84,32 @@ TYPE_CONFIG = {
 MULTI_TYPES = ("navsatfix", "odometry", "laserscan", "pointcloud2")
 
 
-def shift_navsatfix(msg: NavSatFix, robot_id: int) -> None:
+def shift_navsatfix(msg: NavSatFix, robot_id: int,
+                    num_robots: int | None = None) -> None:
     """Apply a deterministic per-robot offset to lat/lon. In-place."""
-    msg.latitude  += (robot_id - FLEET_CENTER_ID) * LAT_OFFSET_DEG_PER_ID
-    msg.longitude += (robot_id - FLEET_CENTER_ID) * LON_OFFSET_DEG_PER_ID
+    center = fleet_center_id(num_robots)
+    msg.latitude  += (robot_id - center) * LAT_OFFSET_DEG_PER_ID
+    msg.longitude += (robot_id - center) * LON_OFFSET_DEG_PER_ID
 
 
-def shift_message(msg, robot_id: int, msg_type: str) -> None:
+def shift_message(msg, robot_id: int, msg_type: str,
+                  num_robots: int | None = None) -> None:
     """Apply per-robot offset where meaningful for the chosen type."""
     if msg_type == "navsatfix":
-        shift_navsatfix(msg, robot_id)
+        shift_navsatfix(msg, robot_id, num_robots=num_robots)
     # Odometry / PointCloud2: no per-robot shift (the topic name already
     # distinguishes robots; spatial offset of pose or cloud is not load-relevant).
 
 
-def restamp_ns(msg, t_ns: int) -> None:
-    """Set header.stamp to a wall-clock ns timestamp. In-place.
+def restamp_ns(msg, t_ns: int, frame_id: str | None = None) -> None:
+    """Set header.stamp (and optionally frame_id). In-place.
 
     Works for any message with a std_msgs/Header at `.header`.
     """
     msg.header.stamp.sec = t_ns // 1_000_000_000
     msg.header.stamp.nanosec = t_ns % 1_000_000_000
+    if frame_id is not None:
+        msg.header.frame_id = frame_id
 
 
 class BagLooper:
@@ -181,6 +192,8 @@ class RobotReplay(Node):
         self._robot_id = robot_id
         self._rate_hz = rate_hz
         self._msg_type = msg_type
+        self._num_robots = int(os.environ.get("NUM_ROBOTS", "0")) or None
+        self._frame_id = f"robot_{robot_id}"
         self._looper = BagLooper(bag_path, topic_type=type_str)
         self._pub = self.create_publisher(type_class, f"/robot_{robot_id}/{suffix}", 10)
         self._timer = self.create_timer(1.0 / rate_hz, self._tick)
@@ -191,9 +204,9 @@ class RobotReplay(Node):
 
     def _tick(self) -> None:
         msg = next(self._looper)
-        shift_message(msg, self._robot_id, self._msg_type)
+        shift_message(msg, self._robot_id, self._msg_type, num_robots=self._num_robots)
         t0_ns = time.time_ns()
-        restamp_ns(msg, t0_ns)
+        restamp_ns(msg, t0_ns, frame_id=self._frame_id)
         self._pub.publish(msg)
         if self._latency_logger is not None:
             self._latency_logger.record(self._suffix, self._topic, t0_ns)
@@ -209,6 +222,8 @@ class MultiTopicRobotReplay(Node):
         super().__init__(f"robot_multi_{robot_id}")
         self._robot_id = robot_id
         self._latency_logger = latency_logger
+        self._num_robots = int(os.environ.get("NUM_ROBOTS", "0")) or None
+        self._frame_id = f"robot_{robot_id}"
         self._streams = []
         for short in types:
             if short not in TYPE_CONFIG:
@@ -225,9 +240,10 @@ class MultiTopicRobotReplay(Node):
                         msg = next(_looper)
                     except RuntimeError:
                         return
-                    shift_message(msg, self._robot_id, _short)
+                    shift_message(msg, self._robot_id, _short,
+                                  num_robots=self._num_robots)
                     t0_ns = time.time_ns()
-                    restamp_ns(msg, t0_ns)
+                    restamp_ns(msg, t0_ns, frame_id=self._frame_id)
                     _pub.publish(msg)
                     if self._latency_logger is not None:
                         self._latency_logger.record(_suffix, _topic, t0_ns)
@@ -282,6 +298,10 @@ def main() -> None:
         raise SystemExit("BAG_PATH (env or --bag-path) is required")
 
     multi = (args.msg_type == "multi")
+
+    # Ensure GPS centering uses the fleet size even when only --num-robots is set.
+    if args.num_robots > 0:
+        os.environ["NUM_ROBOTS"] = str(args.num_robots)
 
     rclpy.init()
     nodes = []

@@ -115,8 +115,8 @@ TOPOLOGY=per-robot N=5 BROKER=mqtt BAG_PATH=/path/to/bag ./run.sh
 TOPOLOGY=per-robot N=5 BROKER=mqtt ./run.sh --stop
 ```
 
-In `per-robot` mode each robot's `header.frame_id` is set to `robot_<id>`
-so consumers can identify the source robot per message.
+Each robot sets `header.frame_id` to `robot_<id>` on every published message
+so consumers (e.g. Nebula) can identify the source robot per payload.
 
 ## Manual 3-stage startup
 
@@ -245,8 +245,8 @@ The bag contains NavSatFix, Odometry, LaserScan and PointCloud2 topics.
 `robot_replay.py` selects topics **by message type**, not by name, so it
 works with any bag that has those four ROS 2 types.
 Each simulated robot gets its GPS position shifted **~6 m perpendicular to the field's
-travel direction** (computed via PCA on the bag trajectory), so the 10 robots form
-non-crossing parallel tracks centred around the original route.
+travel direction** (computed via PCA on the bag trajectory). Offsets are centred on
+robots `1..N` (`NUM_ROBOTS`), so larger fleets stay symmetric around the base track.
 
 ## Trajectory recording and plotting
 
