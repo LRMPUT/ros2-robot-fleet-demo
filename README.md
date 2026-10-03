@@ -10,6 +10,13 @@ Each robot replays a ROS 2 bag and has its own private sink (edge topology).
 - Docker Engine ≥ 24 with Compose v2
 - A ROS 2 bag directory (see conversion below if you have a ROS 1 `.bag`)
 
+### Localhost-only lab networking
+
+Brokers, ksqlDB, Kafka UI, and the GIS API publish ports on **`127.0.0.1` only**.
+Per-robot Mosquitto (host network) listens on **`127.0.0.1:<port>`**. MQTT allows
+anonymous clients under that loopback bind — fine for a single-machine lab, not
+for a shared network. Mutating GIS API IDs are allowlisted (`^[A-Za-z0-9_-]+$`).
+
 ### Convert a ROS 1 bag (one-time)
 
 **Option A — Docker (no local Python needed):**

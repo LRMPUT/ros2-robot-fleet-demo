@@ -61,7 +61,9 @@ for ((i = 1; i <= N; i++)); do
         PORT=$((1882 + i))
         # Generate per-robot mosquitto config with the correct listener port.
         BROKER_CONF="${OUT_DIR}/mosquitto_broker_${i}.conf"
-        sed "s/^listener .*/listener ${PORT}/" "${SCRIPT_DIR}/mosquitto.conf" > "${BROKER_CONF}"
+        # Bind to loopback under host networking (lab-only; no LAN exposure).
+        sed "s/^listener .*/listener ${PORT} 127.0.0.1/" \
+            "${SCRIPT_DIR}/mosquitto.lab.conf" > "${BROKER_CONF}"
         cat >> "${OUT}" <<EOF
   broker_${i}:
     image: eclipse-mosquitto:2.0
