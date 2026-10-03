@@ -3,14 +3,13 @@ from typing import Optional, List
 from pydantic import BaseModel
 import logging
 from app.adapters.ksqldb import database
+from app.adapters.ksqldb.ids import http_safe_id
 from app.common.rosbag.reader import ROSBagGeofenceReader
 from app.common.models import GPSPoint
+from app.config import settings
 
 router = APIRouter()
 logger = logging.getLogger("uvicorn.info")
-
-# ROSbag path from docker-compose volume
-ROSBAG_PATH = "/bags/rorbots_follower_leader_parcelle_1MONT_ros2"
 
 class HistoricalGeofenceResponse(BaseModel):
     robot_id: str
@@ -52,6 +51,8 @@ def get_historical_geofence_violations(
     limit: Optional[int] = Query(None, description="Max number of points to return (None = all)")
 ):
     """Return all the GPS coordinates where the robot is out from the specified plot"""
+    robot_id = http_safe_id(robot_id, "robot_id")
+    zone_id = http_safe_id(zone_id, "zone_id")
     logger.info(f"Historical query: robot={robot_id}, zone={zone_id}, limit={limit}")
     
     # Get zone from database
@@ -64,7 +65,7 @@ def get_historical_geofence_violations(
     
     # Read ROSbag
     try:
-        reader = ROSBagGeofenceReader(ROSBAG_PATH)
+        reader = ROSBagGeofenceReader(settings.ROSBAG_PATH)
         result = reader.get_gps_outside_zone(robot_id, polygon_hex, limit)
     except FileNotFoundError as e:
         raise HTTPException(404, detail=str(e))
@@ -117,12 +118,14 @@ def get_historical_geofence_summary(
 ):
     """Quick summary"""
 
+    robot_id = http_safe_id(robot_id, "robot_id")
+    zone_id = http_safe_id(zone_id, "zone_id")
     zone = database.get_zone(zone_id)
     if not zone:
         raise HTTPException(404, detail=f"Zone '{zone_id}' not found")
     
     try:
-        reader = ROSBagGeofenceReader(ROSBAG_PATH)
+        reader = ROSBagGeofenceReader(settings.ROSBAG_PATH)
         result = reader.get_gps_outside_zone(robot_id, zone['geo'], limit=None)
     except Exception as e:
         logger.error(f"Error: {e}")
@@ -161,12 +164,14 @@ def export_geofence_violations_csv(
     """Export to CSV"""
     from fastapi.responses import Response
     
+    robot_id = http_safe_id(robot_id, "robot_id")
+    zone_id = http_safe_id(zone_id, "zone_id")
     zone = database.get_zone(zone_id)
     if not zone:
         raise HTTPException(404, detail=f"Zone '{zone_id}' not found")
     
     try:
-        reader = ROSBagGeofenceReader(ROSBAG_PATH)
+        reader = ROSBagGeofenceReader(settings.ROSBAG_PATH)
         result = reader.get_gps_outside_zone(robot_id, zone['geo'], limit)
     except Exception as e:
         raise HTTPException(500, detail=str(e))

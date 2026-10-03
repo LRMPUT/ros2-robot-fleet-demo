@@ -1,16 +1,27 @@
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List
 from app.adapters.ksqldb import database
+from app.adapters.ksqldb.ids import http_safe_id
 from app.adapters.ksqldb.ksqldb_client import KsqlDBClient, get_ksqldb_client
 import logging
+import re
 
 router = APIRouter()
 logger = logging.getLogger("uvicorn.info")
 
+_SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+
 class SpeedRequest(BaseModel):
     robot_id: str
     config_name: str
+
+    @field_validator("robot_id", "config_name")
+    @classmethod
+    def _ids(cls, v: str, info):
+        if not v or not _SAFE_ID.match(v):
+            raise ValueError(f"{info.field_name} must match {_SAFE_ID.pattern}")
+        return v
 
 class SpeedAssignment(BaseModel):
     id: int
@@ -23,6 +34,10 @@ class SpeedListResponse(BaseModel):
     assignments: List[SpeedAssignment]
 
 async def _update_ksqldb_speed(robot_id: str, config_names: str, ksql: KsqlDBClient):
+    robot_id = http_safe_id(robot_id, "robot_id")
+    if config_names:
+        for part in config_names.split("|"):
+            http_safe_id(part, "config_name")
     table_name = f"SPEED_ALERTS_{robot_id.replace('-', '_')}"
     
     # disable by replacing with empty table
@@ -99,6 +114,7 @@ async def disable_speed_monitoring(data: SpeedRequest, ksql: KsqlDBClient = Depe
 
 @router.delete("/speed/reset/{robot_id}", tags=["Control"])
 async def reset_robot_monitoring(robot_id: str, ksql: KsqlDBClient = Depends(get_ksqldb_client)):
+    robot_id = http_safe_id(robot_id, "robot_id")
     database.remove_all_speed_assignments_for_robot(robot_id)
     await _update_ksqldb_speed(robot_id, "", ksql)
     return {"status": "reset_complete", "robot_id": robot_id}
@@ -115,6 +131,7 @@ def list_speed_monitoring():
 
 @router.get("/speed/{robot_id}", tags=["Control"])
 def get_speed_monitoring_for_robot(robot_id: str):
+    robot_id = http_safe_id(robot_id, "robot_id")
     assignments = database.get_speed_assignments_for_robot(robot_id)
     if not assignments:
         return {"robot_id": robot_id, "is_monitored": False, "config_name": None}
