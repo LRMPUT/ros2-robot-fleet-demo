@@ -383,6 +383,20 @@ stamps its own stage; for JSON payloads the stamps live in a self-contained
 | `t2_ns` | message consumed                     | `consumer/consume.py` on receive    | live   |
 | `t3_ns` | ingested downstream                  | ksqlDB / GIS4IoRT                   | future |
 
+### ksqlDB GIS overlay
+
+See [`ksqldb/README.md`](ksqldb/README.md). Short version: use
+`PAYLOAD_FORMAT=json`, then
+
+```bash
+N=10 BROKER=kafka PAYLOAD_FORMAT=json BAG_PATH=/path/to/bag \
+  docker compose -f docker-compose.kafka.yml -f docker-compose.ksqldb.yml up -d
+```
+
+`fleet-bridge` flattens per-robot topics into `ros2.fleet.{gnss,odom}` for
+`ROS_GPS_FIX_STREAM` / `ROS_FILTERED_ODOM_STREAM`. `ksqldb/` is the overlay
+source of truth; `GIS4IoRT-ksqlDB/` is the nested upstream checkout.
+
 Both sinks stamp `t1_ns` into the `_ts` envelope at publish time, so `t1` is
 available for **both** brokers. The envelope is forward-compatible: each new
 hop appends its own `t_n` without changing the upstream code. CDR payloads
