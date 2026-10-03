@@ -72,7 +72,8 @@ $(printf '%s\n' "${SUBS_YAML}" | sed 's/^/      /')
     kafka.bootstrap_servers: "${BROKER_HOST}:9092"
     kafka.topic_prefix: ros2
     kafka.message_key: "robot_${ROBOT_ID}"
-    kafka.drop_when_full: true
+    # false = block/backpressure (preferred for paper latency runs; avoid silent drops)
+    kafka.drop_when_full: false
     kafka.strict_startup: false
     kafka.acks: "1"
     kafka.linger_ms: 0
