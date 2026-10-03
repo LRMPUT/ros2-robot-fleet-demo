@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.adapters.ksqldb.schemas import SensorCreate, HumidityRuleRequest
 from app.adapters.ksqldb import database
+from app.adapters.ksqldb.ids import http_safe_id
 from app.adapters.ksqldb.ksqldb_client import KsqlDBClient, get_ksqldb_client
 import logging
 
@@ -9,6 +10,7 @@ logger = logging.getLogger("uvicorn.info")
 
 async def _update_ksqldb_humidity(sensor_id: str, min_humidity: float, radius_m: float, ksql: KsqlDBClient):
     """Create or update the ksqlDB humidity monitoring stream for a sensor"""
+    sensor_id = http_safe_id(sensor_id, "sensor_id")
     
     # make sure the base sensor stream exists
     base_stream_query = """
@@ -98,6 +100,7 @@ def list_sensors():
 
 @router.get("/sensors/{sensor_id}", tags=["Humidity Management"])
 def get_sensor(sensor_id: str):
+    sensor_id = http_safe_id(sensor_id, "sensor_id")
     sensor = database.get_sensor(sensor_id)
     if not sensor:
         raise HTTPException(404, detail=f"Sensor {sensor_id} not found")
@@ -105,6 +108,7 @@ def get_sensor(sensor_id: str):
 
 @router.delete("/sensors/{sensor_id}", tags=["Humidity Management"])
 async def delete_sensor(sensor_id: str, ksql: KsqlDBClient = Depends(get_ksqldb_client)):
+    sensor_id = http_safe_id(sensor_id, "sensor_id")
     # disable the ksqlDB stream when deleting sensor
     await _update_ksqldb_humidity(sensor_id, 0.0, 0.0, ksql)
     database.delete_sensor(sensor_id)

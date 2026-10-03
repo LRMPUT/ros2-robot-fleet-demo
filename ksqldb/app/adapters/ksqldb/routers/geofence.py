@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.adapters.ksqldb.schemas import GeofenceRequest
 from app.adapters.ksqldb import database
+from app.adapters.ksqldb.ids import http_safe_geo_hex, http_safe_id
 from app.adapters.ksqldb.ksqldb_client import KsqlDBClient, get_ksqldb_client
 import logging
 
@@ -8,6 +9,10 @@ router = APIRouter()
 logger = logging.getLogger("uvicorn.info")
 
 async def _update_ksqldb_geofence(robot_id: str, hex_list: list, config_names: str, ksql: KsqlDBClient):
+    robot_id = http_safe_id(robot_id, "robot_id")
+    if config_names:
+        for part in config_names.split("|"):
+            http_safe_id(part, "config_name")
     stream_name = f"GEOFENCE_MONITOR_{robot_id.replace('-', '_')}"
     
     # if disabling geofence replace stream with an empty one
@@ -25,7 +30,7 @@ async def _update_ksqldb_geofence(robot_id: str, hex_list: list, config_names: s
         await ksql.execute_statement(ksql_query)
         return "OFF"
         
-    composite_hex = "|".join(hex_list)
+    composite_hex = http_safe_geo_hex("|".join(hex_list), "geo")
     
     # create or replace the monitoring stream
     ksql_query = f"""
@@ -57,6 +62,9 @@ async def _update_ksqldb_geofence(robot_id: str, hex_list: list, config_names: s
 
 @router.post("/geofence", tags=["Control"])  
 async def add_geofence_rule(data: GeofenceRequest, ksql: KsqlDBClient = Depends(get_ksqldb_client)):
+    http_safe_id(data.robot_id or "", "robot_id")
+    http_safe_id(data.zone_id or "", "zone_id")
+    http_safe_id(data.config_name, "config_name")
     robot_exists = database.get_robot(data.robot_id)
     if not robot_exists:
          raise HTTPException(404, detail=f"Robot '{data.robot_id}' does not exist.")
@@ -75,6 +83,8 @@ async def add_geofence_rule(data: GeofenceRequest, ksql: KsqlDBClient = Depends(
 
 @router.delete("/geofence", tags=["Control"])
 async def remove_geofence_rule(data: GeofenceRequest, ksql: KsqlDBClient = Depends(get_ksqldb_client)):
+    http_safe_id(data.robot_id or "", "robot_id")
+    http_safe_id(data.config_name, "config_name")
     database.remove_geofence_assignment(data.robot_id, data.config_name)
     remaining = database.get_all_assignments_for_robot(data.robot_id)
     
@@ -86,6 +96,7 @@ async def remove_geofence_rule(data: GeofenceRequest, ksql: KsqlDBClient = Depen
 
 @router.delete("/geofence/reset/{robot_id}", tags=["Control"])
 async def reset_geofence(robot_id: str, ksql: KsqlDBClient = Depends(get_ksqldb_client)):
+    robot_id = http_safe_id(robot_id, "robot_id")
     database.remove_all_geofence_assignments_for_robot(robot_id)
     await _update_ksqldb_geofence(robot_id, [], "", ksql)
     return {"status": "reset_complete", "robot_id": robot_id}

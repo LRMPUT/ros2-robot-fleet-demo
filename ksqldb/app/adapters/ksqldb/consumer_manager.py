@@ -21,7 +21,9 @@ class ConsumerManager:
         
         consumer = AIOKafkaConsumer(
             topic_name,
-            bootstrap_servers=settings.KAFKA_BROKER,
+            bootstrap_servers=getattr(
+                settings, "KAFKA_BOOTSTRAP_SERVERS", None
+            ) or settings.KAFKA_BROKER,
             group_id=f"ws-group-{topic_name}",
             auto_offset_reset='latest'
         )
