@@ -27,7 +27,7 @@ services:
       broker:
         condition: service_healthy
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: broker:29092
@@ -47,7 +47,7 @@ services:
       schema-registry:
         condition: service_healthy
     ports:
-      - "8088:8088"
+      - "127.0.0.1:8088:8088"
     environment:
       KSQL_BOOTSTRAP_SERVERS: broker:29092
       KSQL_KSQL_SERVICE_ID: ksqldb_fleet
@@ -90,7 +90,7 @@ services:
       schema-registry:
         condition: service_healthy
     ports:
-      - "8090:8080"
+      - "127.0.0.1:8090:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: fleet
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: broker:29092
@@ -108,14 +108,30 @@ services:
       ksqldb-server:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       ACTIVE_ADAPTER: ksqldb
       KAFKA_BOOTSTRAP_SERVERS: broker:29092
+      KAFKA_BROKER: broker:29092
       KSQLDB_DB_NAME: gis4iort.db
-      # BAG_PATH forwarded from host env (used by the /historical endpoint).
-      ROSBAG_PATH: "${BAG_PATH:-/bags}"
+      # Bag is bind-mounted at /bags inside the container.
+      ROSBAG_PATH: "/bags"
     volumes:
       # Mount bag read-only for the historical GNSS endpoint.
       - "${BAG_PATH:-/dev/null}:/bags:ro"
+    restart: unless-stopped
+
+  # Flatten per-robot JSON topics → ros2.fleet.{gnss,odom} for ksqlDB.
+  # Requires PAYLOAD_FORMAT=json on the Kafka fleet.
+  fleet-bridge:
+    build:
+      context: ./ksqldb
+      dockerfile: Dockerfile.api
+    hostname: fleet-bridge
+    depends_on:
+      broker:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: broker:29092
+    entrypoint: ["python", "-m", "app.fleet_bridge"]
     restart: unless-stopped
