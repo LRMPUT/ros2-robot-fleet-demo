@@ -51,7 +51,7 @@ services:
     volumes:
       - ./scripts:/scripts
       - ./logs:/logs
-    command: [ "python", "/scripts/logger.py", "127.0.0.1", "1882" ]
+    command: [ "python", "/scripts/logger.py", "127.0.0.1", "1882", "5" ]
     env_file: .env
 
   nes_worker_1:
