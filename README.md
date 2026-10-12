@@ -227,7 +227,7 @@ docker build -f docker/Dockerfile --build-arg ROS_DISTRO=humble \
 The demo was developed using a real ROS 1 bag from a leader/follower
 agricultural campaign at INRAE Clermont-Ferrand.
 
-**Download:** [Hugging Face (~345 MB)](https://huggingface.co/datasets/mackop102/geoindustry2026_ros2_gis_inrae)
+**Download:** [INRAE Data Repository (Recherche Data Gouv)](https://entrepot.recherche.data.gouv.fr/dataverse/inrae)
 
 ```bash
 # 1. Convert (one-time, ~2 min)
